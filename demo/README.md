@@ -12,6 +12,8 @@ It also includes:
 - **`hashibank-assistant`** for the OIDC/JWKS validation flow
 - **`demo-tools`** for the X.509 payments script and ad hoc inspection
 
+For a presenter-oriented runbook with business context and talk track, refer to [DEMO_WALKTHROUGH.md](./DEMO_WALKTHROUGH.md).
+
 ## What the demo proves
 
 1. **Payments API X.509 flow**
