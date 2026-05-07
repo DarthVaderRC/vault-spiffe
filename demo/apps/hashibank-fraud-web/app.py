@@ -112,6 +112,8 @@ def query_fraud_alerts(username: str, password: str) -> list[dict]:
 
 
 def build_demo_payload() -> dict:
+    # This flow deliberately chains workload identity to a business outcome:
+    # AppRole -> JWT-SVID -> SPIFFE auth -> dynamic DB credentials -> SQL query.
     issuer_auth = approle_login(
         os.environ["HASHIBANK_IDENTITY_ADDR"],
         os.environ["HASHIBANK_CA_CERT"],
@@ -125,6 +127,8 @@ def build_demo_payload() -> dict:
         os.environ["SPIFFE_ROLE"],
         os.environ["SPIFFE_AUDIENCE"],
     )
+    # Decode without verification only so the UI can show the SPIFFE subject; the
+    # actual access decision comes from the verified SPIFFE login below.
     jwt_claims = decode_unverified_jwt(jwt_token)
     access_auth = spiffe_login_jwt(
         os.environ["HASHIBANK_ACCESS_ADDR"],
@@ -133,6 +137,8 @@ def build_demo_payload() -> dict:
         role=os.environ["SPIFFE_ROLE"],
         svid=jwt_token,
     )
+    # Use the relying-party Vault token, not the issuer token, to fetch the short-lived
+    # database credential that backs the fraud dashboard query.
     db_secret = read_vault_path(
         os.environ["HASHIBANK_ACCESS_ADDR"],
         os.environ["HASHIBANK_CA_CERT"],

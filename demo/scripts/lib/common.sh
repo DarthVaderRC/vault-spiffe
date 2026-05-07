@@ -22,6 +22,8 @@ compose() {
 vault_exec() {
   local service="$1"
   shift
+  # Run Vault CLI commands inside the service container so they use container-local
+  # DNS names and the demo CA bundle instead of host networking assumptions.
   compose exec -T "$service" sh -lc "export VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/config/tls/hashibank-root-ca.crt; $*"
 }
 

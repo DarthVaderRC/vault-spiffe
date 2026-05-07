@@ -38,6 +38,8 @@ generate_server_cert() {
     return 0
   fi
 
+  # Include both the Compose service name and localhost so the same Vault listener
+  # certificate works for container-to-container traffic and host-side access.
   cat >"$ext_file" <<EOF
 subjectAltName=DNS:${service_name},DNS:localhost,IP:127.0.0.1
 extendedKeyUsage=serverAuth
@@ -137,8 +139,12 @@ configure_identity() {
 
   vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write pki/roles/payments-spiffe allow_any_name=true enforce_hostnames=false require_cn=false allowed_uri_sans='spiffe://hashibank.demo/payments/*' max_ttl=1h" >/dev/null
 
+  # OIDC compatibility lets non-Vault consumers validate minted JWT-SVIDs through
+  # discovery and JWKS endpoints published by the SPIFFE secrets engine.
   vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write spiffe/config trust_domain=hashibank.demo jwt_issuer_url=https://hashibank-identity:8200/v1/spiffe jwt_oidc_compatibility_mode=true key_lifetime=24h bundle_refresh_hint=1h" >/dev/null
 
+  # Create AppRole roles with raw JSON so alias_metadata reliably lands on the
+  # resulting entity alias and can drive the SPIFFE subject template.
   curl --silent --show-error --fail \
     --cacert "$ROOT_CA_FILE" \
     --header "X-Vault-Token: $root_token" \
@@ -163,11 +169,15 @@ configure_identity() {
     --data '{"token_type":"batch","token_policies":["identity-assistant-spiffe"],"alias_metadata":{"spiffe_path":"ai/relationship-assistant","app":"relationship-assistant","line_of_business":"wealth"}}' \
     "$IDENTITY_HOST_ADDR/v1/auth/approle/role/relationship-assistant" >/dev/null
 
+  # SPIFFE templates address alias metadata through the auth mount accessor, so
+  # resolve it once and use it in both JWT role templates.
   approle_accessor=$(vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault auth list" | awk '$1 == "approle/" {print $3}')
 
   fraud_template="$TEMPLATE_DIR/fraud-ops-web-template.json"
   assistant_template="$TEMPLATE_DIR/relationship-assistant-template.json"
 
+  # Derive the SPIFFE subject from AppRole alias metadata instead of hard-coding
+  # workload IDs in the issuing role.
   cat >"$fraud_template" <<EOF
 {"sub":"spiffe://hashibank.demo/{{identity.entity.aliases.${approle_accessor}.custom_metadata.spiffe_path}}","bank":"HashiBank"}
 EOF
@@ -209,6 +219,8 @@ configure_access() {
   vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write database/config/hashibank-postgres plugin_name=postgresql-database-plugin allowed_roles=fraud-readonly connection_url='postgresql://{{username}}:{{password}}@postgres-hashibank:5432/hashibank?sslmode=disable' username=vaultadmin password=vaultadminpw password_authentication=scram-sha-256" >/dev/null
   vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write database/roles/fraud-readonly db_name=hashibank-postgres creation_statements=\"CREATE ROLE \\\"{{name}}\\\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT CONNECT ON DATABASE hashibank TO \\\"{{name}}\\\"; GRANT USAGE ON SCHEMA public TO \\\"{{name}}\\\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \\\"{{name}}\\\";\" default_ttl=1h max_ttl=24h" >/dev/null
 
+  # Keep separate auth mounts so the demo can show X.509 and JWT SPIFFE logins
+  # side by side without reconfiguring the same mount between scenarios.
   if ! vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth list | grep -q '^spiffe-x509/'"; then
     vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth enable -path=spiffe-x509 spiffe" >/dev/null
   fi
@@ -217,8 +229,11 @@ configure_access() {
     vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth enable -path=spiffe-jwt -passthrough-request-headers=Authorization spiffe" >/dev/null
   fi
 
+  # JWT-based SPIFFE auth expects the original Authorization header to reach the mount.
   vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth tune -passthrough-request-headers=Authorization spiffe-jwt/" >/dev/null
 
+  # X.509 auth trusts a local bundle copied from the issuer cluster. JWT auth uses
+  # the issuer cluster's published web bundle so non-static trust still works.
   vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write auth/spiffe-x509/config trust_domain=hashibank.demo profile=static bundle=@/vault/runtime/trust/hashibank-spiffe-root.pem" >/dev/null
   vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write auth/spiffe-jwt/config trust_domain=hashibank.demo profile=https_web_bundle endpoint_url=https://hashibank-identity:8200/v1/spiffe/trust_bundle/web endpoint_root_ca_truststore_pem=@/vault/config/tls/hashibank-root-ca.crt audience=hashibank-access" >/dev/null
 
@@ -227,6 +242,8 @@ configure_access() {
 }
 
 main() {
+  # Preserve init data, role IDs, trust material, and generated certificates under
+  # demo/runtime so the walkthrough can inspect them after bootstrap.
   mkdir -p \
     "$IDENTITY_RUNTIME_DIR/file" \
     "$ACCESS_RUNTIME_DIR/file" \

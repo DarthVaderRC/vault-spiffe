@@ -28,6 +28,7 @@ KEY_FILE = RUNTIME_DIR / "generated" / "payments-api.key"
 
 
 def main() -> None:
+    # The issuer-side Vault token is only used to request a SPIFFE-named certificate.
     issuer_auth = approle_login(
         IDENTITY_ADDR,
         CA_CERT,
@@ -48,6 +49,8 @@ def main() -> None:
     write_text(CERT_FILE, cert_data["certificate"])
     write_text(KEY_FILE, cert_data["private_key"])
 
+    # The relying-party Vault cluster authenticates the workload from the client
+    # certificate and returns the token that unlocks the payments proof path.
     access_auth = spiffe_login_x509(
         ACCESS_ADDR,
         CA_CERT,
@@ -64,6 +67,7 @@ def main() -> None:
         "kv/data/payments/bootstrap",
     )
 
+    # Emit only the fields the walkthrough needs so the live demo stays concise.
     payload = {
         "persona": "payments-api",
         "spiffe_uri_sans": extract_uri_sans(cert_data["certificate"]),

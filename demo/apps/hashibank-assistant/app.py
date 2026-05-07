@@ -91,6 +91,8 @@ ERROR_TEMPLATE = """
 
 
 def build_demo_payload() -> dict:
+    # This flow validates the SPIFFE JWT outside Vault auth to show that a relying
+    # party can trust Vault-published OIDC metadata and JWKS directly.
     issuer_auth = approle_login(
         os.environ["HASHIBANK_IDENTITY_ADDR"],
         os.environ["HASHIBANK_CA_CERT"],
@@ -104,6 +106,8 @@ def build_demo_payload() -> dict:
         os.environ["SPIFFE_ROLE"],
         os.environ["SPIFFE_AUDIENCE"],
     )
+    # The relying-party code resolves discovery and keys from the SPIFFE issuer
+    # instead of depending on a Vault-native auth mount.
     discovery = fetch_oidc_configuration(
         os.environ["HASHIBANK_IDENTITY_ADDR"],
         os.environ["HASHIBANK_CA_CERT"],

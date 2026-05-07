@@ -33,6 +33,8 @@ def _request(
     payload: dict[str, Any] | None = None,
     cert: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
+    # Keep the demo client intentionally narrow: every request is TLS-verified,
+    # JSON-based, and surfaces failures immediately instead of hiding them.
     response = requests.request(
         method,
         url,
@@ -73,6 +75,8 @@ def mint_spiffe_jwt(
         headers={"X-Vault-Token": token},
         payload={"audience": audience},
     )
+    # Vault's SPIFFE mintjwt endpoint returns the JWT-SVID in the "token" field,
+    # not under an "auth" stanza like a Vault login response.
     token_value = data.get("data", {}).get("token")
     if not token_value:
         raise VaultDemoError(f"SPIFFE mintjwt response did not contain a token field: {data}")
@@ -167,6 +171,8 @@ def fetch_oidc_configuration(base_url: str, ca_cert: str) -> dict[str, Any]:
         ca_cert,
     )
     jwks_uri = data.get("jwks_uri")
+    # Normalize relative JWKS URLs so the relying-party code can call the discovery
+    # document without knowing whether Vault emitted an absolute or relative path.
     if isinstance(jwks_uri, str) and jwks_uri.startswith("/"):
         data["jwks_uri"] = urljoin(f"{base_url}/", jwks_uri.lstrip("/"))
     return data
@@ -183,6 +189,8 @@ def validate_spiffe_jwt(
     header = jwt.get_unverified_header(token)
     key_id = header.get("kid")
     jwks = _request("GET", jwks_uri, ca_cert)
+    # Match the JWT header kid to the published JWKS entry so validation keeps
+    # working even when the SPIFFE issuer rotates signing keys.
     for entry in jwks.get("keys", []):
         if entry.get("kid") == key_id:
             signing_key = jwt.PyJWK.from_dict(entry).key
