@@ -240,12 +240,8 @@ review_bootstrap() {
   pause_for_continue
 
   show_heading "Group E: SPIFFE auth configuration"
-  show_vault_command_output "SPIFFE X.509 auth trust domain" "vault read -field=trust_domain auth/spiffe-x509/config"
-  show_vault_command_output "SPIFFE X.509 auth profile" "vault read -field=profile auth/spiffe-x509/config"
-  show_vault_command_output "SPIFFE JWT auth trust domain" "vault read -field=trust_domain auth/spiffe-jwt/config"
-  show_vault_command_output "SPIFFE JWT auth profile" "vault read -field=profile auth/spiffe-jwt/config"
-  show_vault_command_output "SPIFFE JWT auth audience" "vault read -field=audience auth/spiffe-jwt/config"
-  show_vault_command_output "SPIFFE JWT auth endpoint" "vault read -field=endpoint_url auth/spiffe-jwt/config"
+  show_vault_command_output "SPIFFE X.509 auth configuration" "vault read auth/spiffe-x509/config"
+  show_vault_command_output "SPIFFE JWT auth configuration" "vault read auth/spiffe-jwt/config"
   pause_for_continue
 
   show_heading "Group F: SPIFFE auth roles"
