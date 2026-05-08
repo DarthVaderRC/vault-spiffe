@@ -61,6 +61,8 @@ services:
     build:
       context: .
       dockerfile: tools/Dockerfile
+      args:
+        VAULT_CLI_IMAGE: ${VAULT_ENTERPRISE_IMAGE:-hashicorp/vault-enterprise:2.0.0-ent}
     command:
       - bash
       - -lc

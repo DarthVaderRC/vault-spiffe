@@ -30,6 +30,8 @@ Use the three scenarios to make one architectural point:
    ./scripts/bootstrap.sh review
    ```
 
+   The review is split into logical groups and pauses after each section so you can control the pace in the room.
+
    Use this review output to show:
 
    - the policies being written

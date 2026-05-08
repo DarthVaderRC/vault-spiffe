@@ -94,7 +94,7 @@ To review the setup before the live scenarios, run:
 ./scripts/bootstrap.sh review
 ```
 
-The review output shows the actual commands plus jq-formatted JSON for:
+The review output is split into logical groups, pauses between sections for a keypress, and shows the Vault CLI commands plus jq-formatted JSON for:
 
 - AppRole definitions and alias metadata
 - policies
@@ -112,7 +112,7 @@ Each demo script supports:
 
 Every checkpoint now prints:
 
-- the actual command being run
+- the actual Vault CLI or local inspection command being run
 - the raw response or file content
 - jq-style formatting for JSON responses
 - short operator highlights for the live demo

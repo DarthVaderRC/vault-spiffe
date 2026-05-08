@@ -17,10 +17,10 @@ case "$ACTION" in
 esac
 
 if [[ "$ACTION" == "final-reveal" || "$ACTION" == "all" ]]; then
-  compose up -d demo-tools hashibank-assistant >/dev/null
+  compose up -d --build demo-tools hashibank-assistant >/dev/null
   wait_for_http "hashibank-assistant" "http://localhost:${ASSISTANT_WEB_PORT}/healthz"
 else
-  compose up -d demo-tools >/dev/null
+  compose up -d --build demo-tools >/dev/null
 fi
 
 compose exec -T demo-tools bash -lc \

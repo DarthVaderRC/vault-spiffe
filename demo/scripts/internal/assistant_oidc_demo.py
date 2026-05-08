@@ -17,6 +17,7 @@ from hashibank_demo.checkpoints import (
     step_artifacts,
 )
 from hashibank_demo.transcript import (
+    demo_relative_path,
     print_highlights,
     print_info,
     print_reset,
@@ -25,6 +26,7 @@ from hashibank_demo.transcript import (
     run_json_command,
     run_text_command,
     shell_quote,
+    vault_cli_command,
 )
 from hashibank_demo.vault_client import decode_unverified_jwt, jwt_has_expired
 
@@ -35,14 +37,12 @@ PAGE_URL = os.environ.get("ASSISTANT_WEB_URL", "http://localhost:18082/")
 
 DEMO_ROOT = Path("/workspace/demo")
 RUNTIME_DIR = DEMO_ROOT / "runtime"
-TLS_DIR = DEMO_ROOT / "config" / "tls"
-
-VAULT_ADDR = "https://hashibank-vault:8200"
-CA_CERT = TLS_DIR / "hashibank-root-ca.crt"
-ROOT_TOKEN_FILE = RUNTIME_DIR / "hashibank-vault" / "root-token"
 ROLE_ID_FILE = RUNTIME_DIR / "approle" / "relationship-assistant.role_id"
 SECRET_ID_FILE = RUNTIME_DIR / "approle" / "relationship-assistant.secret_id"
 CHECKPOINT_FILE = scenario_state_path(SCENARIO)
+ROLE_ID_REF = demo_relative_path(ROLE_ID_FILE)
+SECRET_ID_REF = demo_relative_path(SECRET_ID_FILE)
+CHECKPOINT_REF = demo_relative_path(CHECKPOINT_FILE)
 SPIFFE_ROLE = "relationship-assistant"
 SPIFFE_AUDIENCE = "assistant-ui"
 
@@ -79,26 +79,20 @@ STEPS = [
 def issuer_auth_step(state: dict) -> dict:
     run_json_command(
         "Assistant AppRole role definition",
-        f"""
-        ROOT_TOKEN=$(cat {shell_quote(ROOT_TOKEN_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $ROOT_TOKEN" \
-          {shell_quote(f"{VAULT_ADDR}/v1/auth/approle/role/relationship-assistant")}
-        """,
+        vault_cli_command(
+            "vault read -format=json auth/approle/role/relationship-assistant",
+            root_token=True,
+        ),
     )
     response = run_json_command(
         "Assistant AppRole login",
-        f"""
-        ROLE_ID=$(cat {shell_quote(ROLE_ID_FILE)})
-        SECRET_ID=$(cat {shell_quote(SECRET_ID_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "Content-Type: application/json" \
-          --request POST \
-          --data "$(jq -nc --arg role_id "$ROLE_ID" --arg secret_id "$SECRET_ID" '{{role_id:$role_id, secret_id:$secret_id}}')" \
-          {shell_quote(f"{VAULT_ADDR}/v1/auth/approle/login")}
-        """,
+        vault_cli_command(
+            f"""
+            ROLE_ID=$(cat {shell_quote(ROLE_ID_REF)})
+            SECRET_ID=$(cat {shell_quote(SECRET_ID_REF)})
+            vault write -format=json auth/approle/login role_id="$ROLE_ID" secret_id="$SECRET_ID"
+            """
+        ),
     )
     issuer_auth = response["auth"]
     print_highlights(
@@ -125,26 +119,19 @@ def identity_artifact_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "mint-jwt")
     run_json_command(
         "Assistant SPIFFE role definition",
-        f"""
-        ROOT_TOKEN=$(cat {shell_quote(ROOT_TOKEN_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $ROOT_TOKEN" \
-          {shell_quote(f"{VAULT_ADDR}/v1/spiffe/role/{SPIFFE_ROLE}")}
-        """,
+        vault_cli_command(
+            f"vault read -format=json spiffe/role/{SPIFFE_ROLE}",
+            root_token=True,
+        ),
     )
     response = run_json_command(
         "Assistant JWT-SVID mint response",
-        f"""
-        ISSUER_TOKEN=$(jq -r '.steps["approle-login"].artifacts.client_token' {shell_quote(CHECKPOINT_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $ISSUER_TOKEN" \
-          --header "Content-Type: application/json" \
-          --request POST \
-          --data "$(jq -nc --arg audience {shell_quote(SPIFFE_AUDIENCE)} '{{audience:$audience}}')" \
-          {shell_quote(f"{VAULT_ADDR}/v1/spiffe/role/{SPIFFE_ROLE}/mintjwt")}
-        """,
+        vault_cli_command(
+            f"""
+            export VAULT_TOKEN=$(jq -r '.steps["approle-login"].artifacts.client_token' {shell_quote(CHECKPOINT_REF)})
+            vault write -format=json spiffe/role/{SPIFFE_ROLE}/mintjwt audience={shell_quote(SPIFFE_AUDIENCE)}
+            """
+        ),
     )
     jwt_token = response["data"]["token"]
     run_text_command(
@@ -175,28 +162,21 @@ def discovery_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "fetch-discovery")
     discovery = run_json_command(
         "OIDC discovery document for the SPIFFE engine",
-        f"""
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          {shell_quote(f"{VAULT_ADDR}/v1/spiffe/.well-known/openid-configuration")}
-        """,
+        vault_cli_command("vault read -format=json spiffe/.well-known/openid-configuration"),
     )
-    jwks_uri = discovery["jwks_uri"]
+    discovery_data = discovery["data"]
+    jwks_uri = discovery_data["jwks_uri"]
     run_json_command(
         "JWKS for assistant token validation",
-        f"""
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          {shell_quote(jwks_uri)}
-        """,
+        vault_cli_command("vault read -format=json spiffe/.well-known/keys"),
     )
     print_highlights(
-        f"issuer = {discovery['issuer']}",
+        f"issuer = {discovery_data['issuer']}",
         f"jwks_uri = {jwks_uri}",
         "A downstream service can validate the JWT without Vault-native auth semantics.",
     )
     summary = {
-        "issuer": discovery["issuer"],
+        "issuer": discovery_data["issuer"],
         "jwks_uri": jwks_uri,
     }
     record_step(
@@ -219,12 +199,12 @@ def trust_decision_step(state: dict) -> dict:
     validated_claims = run_json_command(
         "Assistant JWT validation against discovery and JWKS",
         f"""
-        JWT_TOKEN=$(jq -r '.steps["mint-jwt"].artifacts.jwt_token' {shell_quote(CHECKPOINT_FILE)})
-        ISSUER=$(jq -r '.steps["fetch-discovery"].artifacts.issuer' {shell_quote(CHECKPOINT_FILE)})
-        JWKS_URI=$(jq -r '.steps["fetch-discovery"].artifacts.jwks_uri' {shell_quote(CHECKPOINT_FILE)})
+        JWT_TOKEN=$(jq -r '.steps["mint-jwt"].artifacts.jwt_token' {shell_quote(CHECKPOINT_REF)})
+        ISSUER=$(jq -r '.steps["fetch-discovery"].artifacts.issuer' {shell_quote(CHECKPOINT_REF)})
+        JWKS_URI=$(jq -r '.steps["fetch-discovery"].artifacts.jwks_uri' {shell_quote(CHECKPOINT_REF)})
         export JWT_TOKEN ISSUER JWKS_URI
         export PYTHONPATH=/workspace/demo/python
-        export CA_CERT={shell_quote(str(CA_CERT))}
+        export CA_CERT=config/tls/hashibank-root-ca.crt
         export AUDIENCE={shell_quote(SPIFFE_AUDIENCE)}
         python - <<'PY'
 import json

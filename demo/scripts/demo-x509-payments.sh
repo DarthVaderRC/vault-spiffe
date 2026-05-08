@@ -16,6 +16,6 @@ case "$ACTION" in
     ;;
 esac
 
-compose up -d demo-tools >/dev/null
+compose up -d --build demo-tools >/dev/null
 compose exec -T demo-tools bash -lc \
   "export PYTHONPATH=/workspace/demo/python; python /workspace/demo/scripts/internal/payments_x509_demo.py '$ACTION'"

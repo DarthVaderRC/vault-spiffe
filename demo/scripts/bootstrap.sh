@@ -207,102 +207,109 @@ EOF
   vault_exec "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/relationship-assistant/secret-id" >"$APPROLE_DIR/relationship-assistant.secret_id"
 }
 
+review_vault_env() {
+  cat <<EOF
+export VAULT_ADDR='$VAULT_HOST_ADDR'
+export VAULT_CACERT='config/tls/hashibank-root-ca.crt'
+EOF
+}
+
+review_root_env() {
+  cat <<EOF
+$(review_vault_env)
+export VAULT_TOKEN=\$(cat runtime/hashibank-vault/root-token)
+EOF
+}
+
 review_bootstrap() {
   if [[ ! -f "$ROOT_TOKEN_FILE" ]]; then
     echo "Bootstrap state not found. Run ./scripts/bootstrap.sh first." >&2
     exit 1
   fi
 
-  show_json_command "Vault health" "
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  '$VAULT_HOST_ADDR/v1/sys/health'
+  printf '\nBootstrap review uses Vault CLI output and pauses between logical groups.\n\n'
+
+  show_heading "Group 1 of 4: Cluster status and policies"
+  show_json_command "Vault status" "
+$(review_vault_env)
+vault status -format=json
 "
+  show_command_output "Payments API issuer policy" "
+$(review_root_env)
+vault policy read identity-payments-issuer
+"
+  show_command_output "Fraud SPIFFE policy" "
+$(review_root_env)
+vault policy read identity-fraud-spiffe
+"
+  show_command_output "Assistant SPIFFE policy" "
+$(review_root_env)
+vault policy read identity-assistant-spiffe
+"
+  show_command_output "Payments access policy" "
+$(review_root_env)
+vault policy read access-payments
+"
+  show_command_output "Fraud access policy" "
+$(review_root_env)
+vault policy read access-fraud
+"
+  pause_for_continue
 
-  show_command_output "Payments API issuer policy" "cat '$DEMO_DIR/policies/identity-payments-issuer.hcl'"
-  show_command_output "Fraud SPIFFE policy" "cat '$DEMO_DIR/policies/identity-fraud-spiffe.hcl'"
-  show_command_output "Assistant SPIFFE policy" "cat '$DEMO_DIR/policies/identity-assistant-spiffe.hcl'"
-  show_command_output "Payments access policy" "cat '$DEMO_DIR/policies/access-payments.hcl'"
-  show_command_output "Fraud access policy" "cat '$DEMO_DIR/policies/access-fraud.hcl'"
-
+  show_heading "Group 2 of 4: Machine personas and AppRole roles"
   show_json_command "Payments AppRole definition" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/auth/approle/role/payments-api'
+$(review_root_env)
+vault read -format=json auth/approle/role/payments-api
 "
-
   show_json_command "Fraud AppRole definition" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/auth/approle/role/fraud-ops-web'
+$(review_root_env)
+vault read -format=json auth/approle/role/fraud-ops-web
 "
-
   show_json_command "Assistant AppRole definition" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/auth/approle/role/relationship-assistant'
+$(review_root_env)
+vault read -format=json auth/approle/role/relationship-assistant
 "
+  pause_for_continue
 
+  show_heading "Group 3 of 4: SPIFFE issuance and identity configuration"
   show_json_command "PKI role for payments certificates" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/pki/roles/payments-spiffe'
+$(review_root_env)
+vault read -format=json pki/roles/payments-spiffe
 "
-
   show_json_command "SPIFFE engine configuration" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/spiffe/config'
+$(review_root_env)
+vault read -format=json spiffe/config
 "
-
   show_json_command "Fraud SPIFFE role definition" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/spiffe/role/fraud-ops-web'
+$(review_root_env)
+vault read -format=json spiffe/role/fraud-ops-web
 "
-
   show_json_command "Assistant SPIFFE role definition" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/spiffe/role/relationship-assistant'
+$(review_root_env)
+vault read -format=json spiffe/role/relationship-assistant
 "
+  pause_for_continue
 
+  show_heading "Group 4 of 4: Authorization roles and business outcomes"
+  show_json_command "SPIFFE X.509 auth configuration" "
+$(review_root_env)
+vault read -format=json auth/spiffe-x509/config
+"
+  show_json_command "SPIFFE JWT auth configuration" "
+$(review_root_env)
+vault read -format=json auth/spiffe-jwt/config
+"
   show_json_command "SPIFFE X.509 auth role" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/auth/spiffe-x509/role/payments-api'
+$(review_root_env)
+vault read -format=json auth/spiffe-x509/role/payments-api
 "
-
   show_json_command "SPIFFE JWT auth role" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/auth/spiffe-jwt/role/fraud-ops-web'
+$(review_root_env)
+vault read -format=json auth/spiffe-jwt/role/fraud-ops-web
 "
-
   show_json_command "Payments API KV secrets" "
-ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
-curl --silent --show-error --fail \
-  --cacert '$ROOT_CA_FILE' \
-  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
-  '$VAULT_HOST_ADDR/v1/kv/data/payments/api-secrets'
+$(review_root_env)
+vault kv get -format=json kv/payments/api-secrets
 "
 }
 

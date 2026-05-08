@@ -15,6 +15,11 @@ from hashibank_demo.checkpoints import (
     scenario_state_path,
 )
 
+DEMO_COMMAND_CWD = Path("/workspace/demo")
+DEFAULT_VAULT_ADDR = "https://hashibank-vault:8200"
+DEFAULT_VAULT_CACERT = "config/tls/hashibank-root-ca.crt"
+DEFAULT_ROOT_TOKEN_REF = "runtime/hashibank-vault/root-token"
+
 
 class DemoCommandError(RuntimeError):
     """Raised when a presenter-facing shell command fails."""
@@ -22,6 +27,26 @@ class DemoCommandError(RuntimeError):
 
 def shell_quote(value: str | Path) -> str:
     return shlex.quote(str(value))
+
+
+def demo_relative_path(value: str | Path) -> str:
+    candidate = Path(value)
+    try:
+        return str(candidate.relative_to(DEMO_COMMAND_CWD))
+    except ValueError:
+        return str(candidate)
+
+
+def vault_cli_command(command: str, *, root_token: bool = False, extra_setup: list[str] | None = None) -> str:
+    lines = [
+        f"export VAULT_ADDR={shell_quote(DEFAULT_VAULT_ADDR)}",
+        f"export VAULT_CACERT={shell_quote(DEFAULT_VAULT_CACERT)}",
+    ]
+    if root_token:
+        lines.append(f"export VAULT_TOKEN=$(cat {shell_quote(DEFAULT_ROOT_TOKEN_REF)})")
+    lines.extend(extra_setup or [])
+    lines.append(_prepare_command(command))
+    return "\n".join(lines)
 
 
 def run_text_command(title: str, command: str) -> str:
@@ -131,6 +156,7 @@ def _run_shell(command: str) -> str:
         ["bash", "-lc", f"set -euo pipefail\n{command}"],
         capture_output=True,
         text=True,
+        cwd=DEMO_COMMAND_CWD,
         env=os.environ.copy(),
     )
     if completed.returncode != 0:

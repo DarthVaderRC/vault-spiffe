@@ -17,6 +17,7 @@ from hashibank_demo.checkpoints import (
     step_artifacts,
 )
 from hashibank_demo.transcript import (
+    demo_relative_path,
     print_highlights,
     print_info,
     print_reset,
@@ -25,16 +26,12 @@ from hashibank_demo.transcript import (
     run_json_command,
     run_text_command,
     shell_quote,
+    vault_cli_command,
 )
 from hashibank_demo.vault_client import certificate_has_expired, extract_uri_sans, read_text, write_text
 
 DEMO_ROOT = Path("/workspace/demo")
 RUNTIME_DIR = DEMO_ROOT / "runtime"
-TLS_DIR = DEMO_ROOT / "config" / "tls"
-
-VAULT_ADDR = "https://hashibank-vault:8200"
-CA_CERT = TLS_DIR / "hashibank-root-ca.crt"
-ROOT_TOKEN_FILE = RUNTIME_DIR / "hashibank-vault" / "root-token"
 ROLE_ID_FILE = RUNTIME_DIR / "approle" / "payments-api.role_id"
 SECRET_ID_FILE = RUNTIME_DIR / "approle" / "payments-api.secret_id"
 CERT_FILE = RUNTIME_DIR / "generated" / "payments-api.crt"
@@ -44,6 +41,11 @@ SCENARIO = "payments"
 PERSONA = "payments-api"
 SCRIPT_NAME = "demo-x509-payments.sh"
 CHECKPOINT_FILE = scenario_state_path(SCENARIO)
+ROLE_ID_REF = demo_relative_path(ROLE_ID_FILE)
+SECRET_ID_REF = demo_relative_path(SECRET_ID_FILE)
+CHECKPOINT_REF = demo_relative_path(CHECKPOINT_FILE)
+CERT_REF = demo_relative_path(CERT_FILE)
+KEY_REF = demo_relative_path(KEY_FILE)
 
 STEPS = [
     DemoStep("approle-login", "AppRole login", "issuer-auth"),
@@ -56,26 +58,20 @@ STEPS = [
 def issuer_auth_step(state: dict) -> dict:
     run_json_command(
         "Payments AppRole role definition",
-        f"""
-        ROOT_TOKEN=$(cat {shell_quote(ROOT_TOKEN_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $ROOT_TOKEN" \
-          {shell_quote(f"{VAULT_ADDR}/v1/auth/approle/role/payments-api")}
-        """,
+        vault_cli_command(
+            "vault read -format=json auth/approle/role/payments-api",
+            root_token=True,
+        ),
     )
     response = run_json_command(
         "Payments AppRole login",
-        f"""
-        ROLE_ID=$(cat {shell_quote(ROLE_ID_FILE)})
-        SECRET_ID=$(cat {shell_quote(SECRET_ID_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "Content-Type: application/json" \
-          --request POST \
-          --data "$(jq -nc --arg role_id "$ROLE_ID" --arg secret_id "$SECRET_ID" '{{role_id:$role_id, secret_id:$secret_id}}')" \
-          {shell_quote(f"{VAULT_ADDR}/v1/auth/approle/login")}
-        """,
+        vault_cli_command(
+            f"""
+            ROLE_ID=$(cat {shell_quote(ROLE_ID_REF)})
+            SECRET_ID=$(cat {shell_quote(SECRET_ID_REF)})
+            vault write -format=json auth/approle/login role_id="$ROLE_ID" secret_id="$SECRET_ID"
+            """
+        ),
     )
     issuer_auth = response["auth"]
     print_highlights(
@@ -102,26 +98,22 @@ def identity_artifact_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "pki-issue")
     run_json_command(
         "Payments PKI role definition",
-        f"""
-        ROOT_TOKEN=$(cat {shell_quote(ROOT_TOKEN_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $ROOT_TOKEN" \
-          {shell_quote(f"{VAULT_ADDR}/v1/pki/roles/payments-spiffe")}
-        """,
+        vault_cli_command(
+            "vault read -format=json pki/roles/payments-spiffe",
+            root_token=True,
+        ),
     )
     response = run_json_command(
         "Payments certificate issue request",
-        f"""
-        ISSUER_TOKEN=$(jq -r '.steps["approle-login"].artifacts.client_token' {shell_quote(CHECKPOINT_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $ISSUER_TOKEN" \
-          --header "Content-Type: application/json" \
-          --request POST \
-          --data "$(jq -nc --arg cn "payments-api.hashibank.demo" --arg uri_sans "spiffe://hashibank.demo/payments/api" --arg ttl "15m" '{{common_name:$cn, uri_sans:$uri_sans, ttl:$ttl}}')" \
-          {shell_quote(f"{VAULT_ADDR}/v1/pki/issue/payments-spiffe")}
-        """,
+        vault_cli_command(
+            f"""
+            export VAULT_TOKEN=$(jq -r '.steps["approle-login"].artifacts.client_token' {shell_quote(CHECKPOINT_REF)})
+            vault write -format=json pki/issue/payments-spiffe \
+              common_name="payments-api.hashibank.demo" \
+              uri_sans="spiffe://hashibank.demo/payments/api" \
+              ttl=15m
+            """
+        ),
     )
     cert_data = response["data"]
     write_text(CERT_FILE, cert_data["certificate"])
@@ -129,11 +121,11 @@ def identity_artifact_step(state: dict) -> dict:
 
     run_text_command(
         "Generated payments-api.crt",
-        f"cat {shell_quote(CERT_FILE)}",
+        f"cat {shell_quote(CERT_REF)}",
     )
     run_text_command(
         "payments-api.crt field inspection",
-        f"openssl x509 -noout -text -in {shell_quote(CERT_FILE)}",
+        f"openssl x509 -noout -text -in {shell_quote(CERT_REF)}",
     )
 
     uri_sans = extract_uri_sans(cert_data["certificate"])
@@ -173,26 +165,21 @@ def trust_decision_step(state: dict) -> dict:
 
     run_json_command(
         "SPIFFE X.509 auth role for payments-api",
-        f"""
-        ROOT_TOKEN=$(cat {shell_quote(ROOT_TOKEN_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $ROOT_TOKEN" \
-          {shell_quote(f"{VAULT_ADDR}/v1/auth/spiffe-x509/role/payments-api")}
-        """,
+        vault_cli_command(
+            "vault read -format=json auth/spiffe-x509/role/payments-api",
+            root_token=True,
+        ),
     )
     response = run_json_command(
         "SPIFFE X.509 login with payments certificate",
-        f"""
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --cert {shell_quote(cert_artifacts["certificate_file"])} \
-          --key {shell_quote(cert_artifacts["key_file"])} \
-          --header "Content-Type: application/json" \
-          --request POST \
-          --data "$(jq -nc --arg role "payments-api" '{{role:$role, type:"cert"}}')" \
-          {shell_quote(f"{VAULT_ADDR}/v1/auth/spiffe-x509/login")}
-        """,
+        vault_cli_command(
+            f"""
+            vault write -format=json \
+              -client-cert={shell_quote(CERT_REF)} \
+              -client-key={shell_quote(KEY_REF)} \
+              auth/spiffe-x509/login role=payments-api type=cert
+            """
+        ),
     )
     access_auth = response["auth"]
     print_highlights(
@@ -225,13 +212,12 @@ def business_proof_step(state: dict) -> dict:
     access_artifacts = step_artifacts(state, "spiffe-x509-auth")
     response = run_json_command(
         "Payments API KV secrets read",
-        f"""
-        VAULT_TOKEN=$(jq -r '.steps["spiffe-x509-auth"].artifacts.client_token' {shell_quote(CHECKPOINT_FILE)})
-        curl --silent --show-error --fail \
-          --cacert {shell_quote(CA_CERT)} \
-          --header "X-Vault-Token: $VAULT_TOKEN" \
-          {shell_quote(f"{VAULT_ADDR}/v1/kv/data/payments/api-secrets")}
-        """,
+        vault_cli_command(
+            f"""
+            export VAULT_TOKEN=$(jq -r '.steps["spiffe-x509-auth"].artifacts.client_token' {shell_quote(CHECKPOINT_REF)})
+            vault kv get -format=json kv/payments/api-secrets
+            """
+        ),
     )
     payload = {
         "persona": PERSONA,

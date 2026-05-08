@@ -80,14 +80,30 @@ show_heading() {
   printf '\n=== %s ===\n\n' "$title"
 }
 
+pause_for_continue() {
+  if [[ ! -t 0 || ! -t 1 || "${HASHIBANK_DEMO_NO_PAUSE:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  read -r -n 1 -s -p "Press any key to continue..."
+  printf '\n\n'
+}
+
 show_command_output() {
   local title="$1"
   local command="$2"
   local output
 
+  while [[ "$command" == $'\n'* ]]; do
+    command="${command#$'\n'}"
+  done
+  while [[ "$command" == *$'\n' ]]; do
+    command="${command%$'\n'}"
+  done
+
   show_heading "$title"
   printf '$ %s\n\n' "$command"
-  output=$(bash -lc "set -euo pipefail; $command")
+  output=$(cd "$DEMO_DIR" && bash -lc "set -euo pipefail; $command")
   if [[ -n "$output" ]]; then
     printf '%s\n' "$output"
   else
