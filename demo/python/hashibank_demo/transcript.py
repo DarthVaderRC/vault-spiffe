@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import shlex
 import subprocess
@@ -18,7 +17,6 @@ from hashibank_demo.checkpoints import (
 DEMO_COMMAND_CWD = Path("/workspace/demo")
 DEFAULT_VAULT_ADDR = "https://hashibank-vault:8200"
 DEFAULT_VAULT_CACERT = "config/tls/hashibank-root-ca.crt"
-DEFAULT_ROOT_TOKEN_REF = "runtime/hashibank-vault/root-token"
 
 
 class DemoCommandError(RuntimeError):
@@ -37,35 +35,31 @@ def demo_relative_path(value: str | Path) -> str:
         return str(candidate)
 
 
-def vault_cli_command(command: str, *, root_token: bool = False, extra_setup: list[str] | None = None) -> str:
-    lines = [
-        f"export VAULT_ADDR={shell_quote(DEFAULT_VAULT_ADDR)}",
-        f"export VAULT_CACERT={shell_quote(DEFAULT_VAULT_CACERT)}",
-    ]
-    if root_token:
-        lines.append(f"export VAULT_TOKEN=$(cat {shell_quote(DEFAULT_ROOT_TOKEN_REF)})")
-    lines.extend(extra_setup or [])
-    lines.append(_prepare_command(command))
-    return "\n".join(lines)
-
-
-def run_text_command(title: str, command: str) -> str:
+def run_text_command(title: str, command: str, *, env: dict[str, str] | None = None) -> str:
     prepared = _prepare_command(command)
     _print_heading(title)
     _print_command(prepared)
-    output = _run_shell(prepared)
+    output = _run_shell(prepared, env=env)
     _print_output(output)
     return output
 
 
-def run_json_command(title: str, command: str) -> Any:
-    prepared = _prepare_command(command)
-    jq_command = f"(\n{prepared}\n) | jq"
-    _print_heading(title)
-    _print_command(jq_command)
-    output = _run_shell(jq_command)
-    _print_output(output)
-    return json.loads(output)
+def run_vault_command(
+    title: str,
+    command: str,
+    *,
+    token: str | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
+    vault_env = {
+        "VAULT_ADDR": DEFAULT_VAULT_ADDR,
+        "VAULT_CACERT": DEFAULT_VAULT_CACERT,
+    }
+    if token:
+        vault_env["VAULT_TOKEN"] = token
+    if env:
+        vault_env.update({key: str(value) for key, value in env.items()})
+    return run_text_command(title, command, env=vault_env)
 
 
 def print_highlights(*lines: str) -> None:
@@ -151,13 +145,16 @@ def _print_output(output: str) -> None:
         print("(no output)")
 
 
-def _run_shell(command: str) -> str:
+def _run_shell(command: str, *, env: dict[str, str] | None = None) -> str:
+    command_env = os.environ.copy()
+    if env:
+        command_env.update({key: str(value) for key, value in env.items()})
     completed = subprocess.run(
         ["bash", "-lc", f"set -euo pipefail\n{command}"],
         capture_output=True,
         text=True,
         cwd=DEMO_COMMAND_CWD,
-        env=os.environ.copy(),
+        env=command_env,
     )
     if completed.returncode != 0:
         error_output = completed.stderr.strip() or completed.stdout.strip() or f"command failed: {command}"

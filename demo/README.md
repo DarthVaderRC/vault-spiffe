@@ -94,12 +94,13 @@ To review the setup before the live scenarios, run:
 ./scripts/bootstrap.sh review
 ```
 
-The review output is split into logical groups, pauses between sections for a keypress, and shows the Vault CLI commands plus jq-formatted JSON for:
+The review output is split into logical groups, pauses between sections for a keypress, and shows Vault CLI output for:
 
 - AppRole definitions and alias metadata
 - policies
 - PKI role configuration
-- SPIFFE engine and auth role definitions
+- SPIFFE engine configuration and SPIFFE roles
+- SPIFFE auth configuration and SPIFFE auth roles
 - payments API KV secrets
 
 ## Running the demo flows
@@ -114,7 +115,7 @@ Every checkpoint now prints:
 
 - the actual Vault CLI or local inspection command being run
 - the raw response or file content
-- jq-style formatting for JSON responses
+- decoded JWT claims where relevant
 - short operator highlights for the live demo
 
 ### Payments API X.509

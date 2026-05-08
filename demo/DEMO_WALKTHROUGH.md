@@ -30,15 +30,15 @@ Use the three scenarios to make one architectural point:
    ./scripts/bootstrap.sh review
    ```
 
-   The review is split into logical groups and pauses after each section so you can control the pace in the room.
+   The review is split into seven logical groups and pauses after each section so you can control the pace in the room.
 
    Use this review output to show:
 
    - the policies being written
    - the AppRole definitions and alias metadata
    - the PKI role for payments certificates
-   - the SPIFFE engine role definitions
-   - the SPIFFE auth role definitions
+   - the SPIFFE engine configuration and role definitions
+   - the SPIFFE auth configuration and role definitions
    - the payments API KV secrets path
 
 ## Suggested demo order

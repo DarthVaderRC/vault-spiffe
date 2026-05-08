@@ -18,18 +18,23 @@ from hashibank_demo.checkpoints import (
     step_artifacts,
 )
 from hashibank_demo.transcript import (
-    demo_relative_path,
     print_highlights,
     print_info,
     print_reset,
     print_status,
     print_step_footer,
-    run_json_command,
     run_text_command,
-    shell_quote,
-    vault_cli_command,
+    run_vault_command,
 )
-from hashibank_demo.vault_client import decode_unverified_jwt, jwt_has_expired
+from hashibank_demo.vault_client import (
+    approle_login,
+    decode_unverified_jwt,
+    jwt_has_expired,
+    mint_spiffe_jwt,
+    read_text,
+    read_vault_path,
+    spiffe_login_jwt,
+)
 
 SCENARIO = "fraud"
 PERSONA = "fraud-ops-web"
@@ -38,12 +43,13 @@ PAGE_URL = os.environ.get("FRAUD_WEB_URL", "http://localhost:18081/")
 
 DEMO_ROOT = Path("/workspace/demo")
 RUNTIME_DIR = DEMO_ROOT / "runtime"
+TLS_DIR = DEMO_ROOT / "config" / "tls"
+VAULT_ADDR = "https://hashibank-vault:8200"
+CA_CERT = TLS_DIR / "hashibank-root-ca.crt"
+ROOT_TOKEN_FILE = RUNTIME_DIR / "hashibank-vault" / "root-token"
 ROLE_ID_FILE = RUNTIME_DIR / "approle" / "fraud-ops-web.role_id"
 SECRET_ID_FILE = RUNTIME_DIR / "approle" / "fraud-ops-web.secret_id"
 CHECKPOINT_FILE = scenario_state_path(SCENARIO)
-ROLE_ID_REF = demo_relative_path(ROLE_ID_FILE)
-SECRET_ID_REF = demo_relative_path(SECRET_ID_FILE)
-CHECKPOINT_REF = demo_relative_path(CHECKPOINT_FILE)
 SPIFFE_ROLE = "fraud-ops-web"
 SPIFFE_AUDIENCE = "hashibank-vault"
 SPIFFE_AUTH_PATH = "spiffe-jwt"
@@ -72,24 +78,21 @@ def lease_has_expired(state: dict, step_id: str, lease_duration: int | None, *, 
 
 
 def issuer_auth_step(state: dict) -> dict:
-    run_json_command(
+    root_token = read_text(ROOT_TOKEN_FILE)
+    role_id = read_text(ROLE_ID_FILE)
+    secret_id = read_text(SECRET_ID_FILE)
+
+    run_vault_command(
         "Fraud AppRole role definition",
-        vault_cli_command(
-            "vault read -format=json auth/approle/role/fraud-ops-web",
-            root_token=True,
-        ),
+        "vault read auth/approle/role/fraud-ops-web",
+        token=root_token,
     )
-    response = run_json_command(
+    run_vault_command(
         "Fraud AppRole login",
-        vault_cli_command(
-            f"""
-            ROLE_ID=$(cat {shell_quote(ROLE_ID_REF)})
-            SECRET_ID=$(cat {shell_quote(SECRET_ID_REF)})
-            vault write -format=json auth/approle/login role_id="$ROLE_ID" secret_id="$SECRET_ID"
-            """
-        ),
+        'vault write auth/approle/login role_id="$ROLE_ID" secret_id="$SECRET_ID"',
+        env={"ROLE_ID": role_id, "SECRET_ID": secret_id},
     )
-    issuer_auth = response["auth"]
+    issuer_auth = approle_login(VAULT_ADDR, str(CA_CERT), role_id, secret_id)
     print_highlights(
         "Check the AppRole role output for alias metadata such as spiffe_path and line_of_business.",
         f"auth.metadata.role_name = {issuer_auth.get('metadata', {}).get('role_name')}",
@@ -112,26 +115,33 @@ def issuer_auth_step(state: dict) -> dict:
 
 def identity_artifact_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "mint-jwt")
-    run_json_command(
+    root_token = read_text(ROOT_TOKEN_FILE)
+    issuer_token = step_artifacts(state, "approle-login")["client_token"]
+
+    run_vault_command(
         "Fraud SPIFFE role definition",
-        vault_cli_command(
-            f"vault read -format=json spiffe/role/{SPIFFE_ROLE}",
-            root_token=True,
-        ),
+        f"vault read spiffe/role/{SPIFFE_ROLE}",
+        token=root_token,
     )
-    response = run_json_command(
+    run_vault_command(
         "Fraud JWT-SVID mint response",
-        vault_cli_command(
-            f"""
-            export VAULT_TOKEN=$(jq -r '.steps["approle-login"].artifacts.client_token' {shell_quote(CHECKPOINT_REF)})
-            vault write -format=json spiffe/role/{SPIFFE_ROLE}/mintjwt audience={shell_quote(SPIFFE_AUDIENCE)}
-            """
-        ),
+        f"vault write spiffe/role/{SPIFFE_ROLE}/mintjwt audience={SPIFFE_AUDIENCE}",
+        token=issuer_token,
     )
-    jwt_token = response["data"]["token"]
+    jwt_token, _ = mint_spiffe_jwt(VAULT_ADDR, str(CA_CERT), issuer_token, SPIFFE_ROLE, SPIFFE_AUDIENCE)
     run_text_command(
-        "Raw fraud JWT-SVID",
-        f"printf '%s\\n' {shell_quote(jwt_token)}",
+        "Decoded fraud JWT-SVID claims",
+        """python - <<'PY'
+import json
+import os
+from hashibank_demo.vault_client import decode_unverified_jwt
+
+print(json.dumps(decode_unverified_jwt(os.environ["JWT_TOKEN"]), indent=2))
+PY""",
+        env={
+            "JWT_TOKEN": jwt_token,
+            "PYTHONPATH": "/workspace/demo/python",
+        },
     )
     jwt_claims = decode_unverified_jwt(jwt_token)
     print_highlights(
@@ -164,32 +174,34 @@ def trust_decision_step(state: dict) -> dict:
     if jwt_has_expired(jwt_artifacts["jwt_token"], leeway_seconds=30):
         raise RuntimeError("Saved JWT-SVID expired; rerun ./scripts/demo-jwt-fraud.sh mint-jwt")
 
-    run_json_command(
+    root_token = read_text(ROOT_TOKEN_FILE)
+    jwt_token = jwt_artifacts["jwt_token"]
+
+    run_vault_command(
         "SPIFFE JWT auth role for fraud-ops-web",
-        vault_cli_command(
-            f"vault read -format=json auth/{SPIFFE_AUTH_PATH}/role/{SPIFFE_ROLE}",
-            root_token=True,
-        ),
+        f"vault read auth/{SPIFFE_AUTH_PATH}/role/{SPIFFE_ROLE}",
+        token=root_token,
     )
-    response = run_json_command(
+    run_vault_command(
         "SPIFFE JWT login for fraud-ops-web",
-        vault_cli_command(
-            f"""
-            JWT_TOKEN=$(jq -r '.steps["mint-jwt"].artifacts.jwt_token' {shell_quote(CHECKPOINT_REF)})
-            vault write -format=json \
-              -header="Authorization=Bearer $JWT_TOKEN" \
-              auth/{SPIFFE_AUTH_PATH}/login role={shell_quote(SPIFFE_ROLE)} type=jwt
-            """
-        ),
+        f'vault write -header="Authorization=Bearer $JWT_TOKEN" auth/{SPIFFE_AUTH_PATH}/login role={SPIFFE_ROLE} type=jwt',
+        env={"JWT_TOKEN": jwt_token},
     )
-    access_auth = response["auth"]
+    access_auth = spiffe_login_jwt(
+        VAULT_ADDR,
+        str(CA_CERT),
+        mount_path=SPIFFE_AUTH_PATH,
+        role=SPIFFE_ROLE,
+        svid=jwt_token,
+    )
+    vault_display_name = access_auth.get("display_name") or access_auth.get("metadata", {}).get("role_name")
     print_highlights(
-        f"auth.display_name = {access_auth.get('display_name')}",
+        f"auth.display_name = {vault_display_name}",
         f"auth.policies = {', '.join(access_auth.get('policies', []))}",
         "This login exchanges the JWT-SVID for a Vault token on the same cluster.",
     )
     summary = {
-        "vault_display_name": access_auth.get("display_name"),
+        "vault_display_name": vault_display_name,
         "vault_policies": access_auth.get("policies", []),
     }
     record_step(
@@ -208,15 +220,14 @@ def trust_decision_step(state: dict) -> dict:
 
 def business_proof_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "db-creds")
-    response = run_json_command(
+    access_token = step_artifacts(state, "spiffe-jwt-auth")["client_token"]
+
+    run_vault_command(
         "Dynamic Postgres credentials from Vault",
-        vault_cli_command(
-            f"""
-            export VAULT_TOKEN=$(jq -r '.steps["spiffe-jwt-auth"].artifacts.client_token' {shell_quote(CHECKPOINT_REF)})
-            vault read -format=json {DB_CREDS_PATH}
-            """
-        ),
+        f"vault read {DB_CREDS_PATH}",
+        token=access_token,
     )
+    response = read_vault_path(VAULT_ADDR, str(CA_CERT), access_token, DB_CREDS_PATH)
     summary = {
         "db_username": response["data"]["username"],
         "db_lease_id": response.get("lease_id"),
@@ -250,12 +261,9 @@ def final_reveal_step(state: dict) -> dict:
     if lease_has_expired(state, "db-creds", db_artifacts["db_lease_duration"]):
         raise RuntimeError("Saved DB credentials expired; rerun ./scripts/demo-jwt-fraud.sh db-creds")
 
-    rows = run_json_command(
+    rows_output = run_text_command(
         "Fraud alerts query with Vault-issued Postgres credentials",
         f"""
-        DB_USERNAME=$(jq -r '.steps["db-creds"].artifacts.db_username' {shell_quote(CHECKPOINT_REF)})
-        DB_PASSWORD=$(jq -r '.steps["db-creds"].artifacts.db_password' {shell_quote(CHECKPOINT_REF)})
-        export DB_USERNAME DB_PASSWORD
         python - <<'PY'
 import json
 import os
@@ -286,10 +294,15 @@ with connect(
             item["amount"] = float(item["amount"])
             item["event_time"] = item["event_time"].isoformat()
             rows.append(item)
-        print(json.dumps(rows))
+        print(json.dumps(rows, indent=2))
 PY
         """,
+        env={
+            "DB_USERNAME": db_artifacts["db_username"],
+            "DB_PASSWORD": db_artifacts["db_password"],
+        },
     )
+    rows = json.loads(rows_output)
 
     payload = {
         "persona": PERSONA,

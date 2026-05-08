@@ -207,110 +207,54 @@ EOF
   vault_exec "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/relationship-assistant/secret-id" >"$APPROLE_DIR/relationship-assistant.secret_id"
 }
 
-review_vault_env() {
-  cat <<EOF
-export VAULT_ADDR='$VAULT_HOST_ADDR'
-export VAULT_CACERT='config/tls/hashibank-root-ca.crt'
-EOF
-}
-
-review_root_env() {
-  cat <<EOF
-$(review_vault_env)
-export VAULT_TOKEN=\$(cat runtime/hashibank-vault/root-token)
-EOF
-}
-
 review_bootstrap() {
   if [[ ! -f "$ROOT_TOKEN_FILE" ]]; then
     echo "Bootstrap state not found. Run ./scripts/bootstrap.sh first." >&2
     exit 1
   fi
 
-  printf '\nBootstrap review uses Vault CLI output and pauses between logical groups.\n\n'
+  printf '\nBootstrap review uses grouped Vault CLI output and pauses between sections.\n'
 
-  show_heading "Group 1 of 4: Cluster status and policies"
-  show_json_command "Vault status" "
-$(review_vault_env)
-vault status -format=json
-"
-  show_command_output "Payments API issuer policy" "
-$(review_root_env)
-vault policy read identity-payments-issuer
-"
-  show_command_output "Fraud SPIFFE policy" "
-$(review_root_env)
-vault policy read identity-fraud-spiffe
-"
-  show_command_output "Assistant SPIFFE policy" "
-$(review_root_env)
-vault policy read identity-assistant-spiffe
-"
-  show_command_output "Payments access policy" "
-$(review_root_env)
-vault policy read access-payments
-"
-  show_command_output "Fraud access policy" "
-$(review_root_env)
-vault policy read access-fraud
-"
+  show_heading "Group A: Policies"
+  show_vault_command_output "Payments API issuer policy" "vault policy read identity-payments-issuer"
+  show_vault_command_output "Fraud SPIFFE policy" "vault policy read identity-fraud-spiffe"
+  show_vault_command_output "Assistant SPIFFE policy" "vault policy read identity-assistant-spiffe"
+  show_vault_command_output "Payments access policy" "vault policy read access-payments"
+  show_vault_command_output "Fraud access policy" "vault policy read access-fraud"
   pause_for_continue
 
-  show_heading "Group 2 of 4: Machine personas and AppRole roles"
-  show_json_command "Payments AppRole definition" "
-$(review_root_env)
-vault read -format=json auth/approle/role/payments-api
-"
-  show_json_command "Fraud AppRole definition" "
-$(review_root_env)
-vault read -format=json auth/approle/role/fraud-ops-web
-"
-  show_json_command "Assistant AppRole definition" "
-$(review_root_env)
-vault read -format=json auth/approle/role/relationship-assistant
-"
+  show_heading "Group B: AppRole definitions"
+  show_vault_command_output "Payments AppRole definition" "vault read auth/approle/role/payments-api"
+  show_vault_command_output "Fraud AppRole definition" "vault read auth/approle/role/fraud-ops-web"
+  show_vault_command_output "Assistant AppRole definition" "vault read auth/approle/role/relationship-assistant"
   pause_for_continue
 
-  show_heading "Group 3 of 4: SPIFFE issuance and identity configuration"
-  show_json_command "PKI role for payments certificates" "
-$(review_root_env)
-vault read -format=json pki/roles/payments-spiffe
-"
-  show_json_command "SPIFFE engine configuration" "
-$(review_root_env)
-vault read -format=json spiffe/config
-"
-  show_json_command "Fraud SPIFFE role definition" "
-$(review_root_env)
-vault read -format=json spiffe/role/fraud-ops-web
-"
-  show_json_command "Assistant SPIFFE role definition" "
-$(review_root_env)
-vault read -format=json spiffe/role/relationship-assistant
-"
+  show_heading "Group C: PKI role"
+  show_vault_command_output "PKI role for payments certificates" "vault read pki/roles/payments-spiffe"
   pause_for_continue
 
-  show_heading "Group 4 of 4: Authorization roles and business outcomes"
-  show_json_command "SPIFFE X.509 auth configuration" "
-$(review_root_env)
-vault read -format=json auth/spiffe-x509/config
-"
-  show_json_command "SPIFFE JWT auth configuration" "
-$(review_root_env)
-vault read -format=json auth/spiffe-jwt/config
-"
-  show_json_command "SPIFFE X.509 auth role" "
-$(review_root_env)
-vault read -format=json auth/spiffe-x509/role/payments-api
-"
-  show_json_command "SPIFFE JWT auth role" "
-$(review_root_env)
-vault read -format=json auth/spiffe-jwt/role/fraud-ops-web
-"
-  show_json_command "Payments API KV secrets" "
-$(review_root_env)
-vault kv get -format=json kv/payments/api-secrets
-"
+  show_heading "Group D: SPIFFE engine config and SPIFFE roles"
+  show_vault_command_output "SPIFFE engine configuration" "vault read spiffe/config"
+  show_vault_command_output "Fraud SPIFFE role definition" "vault read spiffe/role/fraud-ops-web"
+  show_vault_command_output "Assistant SPIFFE role definition" "vault read spiffe/role/relationship-assistant"
+  pause_for_continue
+
+  show_heading "Group E: SPIFFE auth configuration"
+  show_vault_command_output "SPIFFE X.509 auth trust domain" "vault read -field=trust_domain auth/spiffe-x509/config"
+  show_vault_command_output "SPIFFE X.509 auth profile" "vault read -field=profile auth/spiffe-x509/config"
+  show_vault_command_output "SPIFFE JWT auth trust domain" "vault read -field=trust_domain auth/spiffe-jwt/config"
+  show_vault_command_output "SPIFFE JWT auth profile" "vault read -field=profile auth/spiffe-jwt/config"
+  show_vault_command_output "SPIFFE JWT auth audience" "vault read -field=audience auth/spiffe-jwt/config"
+  show_vault_command_output "SPIFFE JWT auth endpoint" "vault read -field=endpoint_url auth/spiffe-jwt/config"
+  pause_for_continue
+
+  show_heading "Group F: SPIFFE auth roles"
+  show_vault_command_output "SPIFFE X.509 auth role" "vault read auth/spiffe-x509/role/payments-api"
+  show_vault_command_output "SPIFFE JWT auth role" "vault read auth/spiffe-jwt/role/fraud-ops-web"
+  pause_for_continue
+
+  show_heading "Group G: KV secrets"
+  show_vault_command_output "Payments API KV secrets" "vault kv get kv/payments/api-secrets"
 }
 
 bootstrap_demo() {

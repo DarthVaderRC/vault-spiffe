@@ -92,6 +92,7 @@ pause_for_continue() {
 show_command_output() {
   local title="$1"
   local command="$2"
+  local exec_command="${3:-$2}"
   local output
 
   while [[ "$command" == $'\n'* ]]; do
@@ -103,7 +104,7 @@ show_command_output() {
 
   show_heading "$title"
   printf '$ %s\n\n' "$command"
-  output=$(cd "$DEMO_DIR" && bash -lc "set -euo pipefail; $command")
+  output=$(cd "$DEMO_DIR" && bash -lc "set -euo pipefail; $exec_command")
   if [[ -n "$output" ]]; then
     printf '%s\n' "$output"
   else
@@ -111,9 +112,16 @@ show_command_output() {
   fi
 }
 
-show_json_command() {
+show_vault_command_output() {
   local title="$1"
   local command="$2"
+  local token_mode="${3:-root}"
+  local setup
 
-  show_command_output "$title" "($command) | jq"
+  setup="export VAULT_ADDR='$VAULT_HOST_ADDR'; export VAULT_CACERT='config/tls/hashibank-root-ca.crt';"
+  if [[ "$token_mode" == "root" ]]; then
+    setup="$setup export VAULT_TOKEN=\$(cat runtime/hashibank-vault/root-token);"
+  fi
+
+  show_command_output "$title" "$command" "$setup $command"
 }
