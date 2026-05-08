@@ -1,6 +1,6 @@
 # HashiBank demo walkthrough and talk track
 
-Use this guide when you present the HashiBank Vault + SPIFFE demo live. It gives you the operator steps, the business context for each scenario, and a concise talk track you can use while the demo runs.
+Use this guide during the live HashiBank Vault + SPIFFE demo. It gives you the operator steps, the banking use case, and the field-level highlights to call out while the commands run.
 
 ## Demo goal
 
@@ -8,7 +8,7 @@ Use the three scenarios to make one architectural point:
 
 - Vault acts as the trust, identity-context, and policy control plane.
 - SPIFFE IDs act as the portable workload identifier layer.
-- Short-lived identity should lead to a business outcome, not stop at authentication.
+- Short-lived identity should lead to a real banking outcome, not stop at authentication.
 
 ## Recommended setup
 
@@ -20,199 +20,222 @@ Use the three scenarios to make one architectural point:
    ./scripts/bootstrap.sh
    ```
 
-2. Keep one terminal open in `demo/` for the demo commands.
+2. Keep one terminal open in `demo/` for the presenter commands.
 3. Keep two browser tabs ready:
    - `http://localhost:18081/`
    - `http://localhost:18082/`
-4. Keep the bootstrap output available so you can refer to the Vault and app URLs.
+4. Before the first scenario, review the setup live:
+
+   ```bash
+   ./scripts/bootstrap.sh review
+   ```
+
+   Use this review output to show:
+
+   - the policies being written
+   - the AppRole definitions and alias metadata
+   - the PKI role for payments certificates
+   - the SPIFFE engine role definitions
+   - the SPIFFE auth role definitions
+   - the payments API KV secrets path
 
 ## Suggested demo order
 
 Run the scenarios in this order:
 
 1. **Payments API X.509** shows standards-based X.509 identity and policy mapping.
-2. **Fraud Ops JWT-SVID** shows the strongest business outcome: live banking data with dynamic database credentials.
-3. **Relationship assistant OIDC** shows that a Vault-minted SPIFFE JWT can work outside Vault-native consumers.
+2. **Fraud Ops JWT-SVID** shows short-lived identity turning into live banking data.
+3. **Relationship assistant OIDC** shows the same identity model working with a downstream service that validates JWTs through discovery and JWKS.
 
 ## Opening talk track
 
-Use this short opening before you run the first scenario:
+Use this before the first scenario:
 
-- "This demo uses two Vault Enterprise clusters."
-- "`hashibank-identity` mints identity material. `hashibank-access` accepts workload identity and maps it to policy."
+- "This demo runs on one HashiBank Vault Cluster."
+- "The same cluster issues identity material, validates SPIFFE identity, and maps that identity to policy."
 - "The trust domain is `hashibank.demo`, and each workload gets a banking-relevant SPIFFE ID."
-- "The goal is not to show token plumbing. The goal is to show how standards-based workload identity turns into controlled business access."
+- "The point is not token plumbing. The point is how workload identity turns into tightly scoped banking access."
 
 ## Scenario 1: Payments API X.509 SPIFFE auth
 
 ### Business context
 
-HashiBank runs an internal payments service that moves money between systems. The bank wants that service to use a standards-based machine identity instead of a long-lived Vault token or a shared certificate that several services reuse.
+HashiBank runs an internal payments API that moves money between banking systems. The bank wants a standards-based machine identity instead of a long-lived Vault token or a certificate reused by multiple services.
 
 ### Operator steps
 
-1. In the demo terminal, run:
+1. Run the checkpoints in order:
 
    ```bash
-   ./scripts/demo-x509-payments.sh
+   ./scripts/demo-x509-payments.sh approle-login
+   ./scripts/demo-x509-payments.sh pki-issue
+   ./scripts/demo-x509-payments.sh spiffe-x509-auth
+   ./scripts/demo-x509-payments.sh payments-api-kv-secrets
    ```
 
-2. In the JSON output, point out these fields:
-   - `spiffe_uri_sans`
-   - `vault_policies`
-   - `payments_proof`
-   - `generated_files`
+2. In `approle-login`, call out:
+   - the AppRole role definition
+   - the raw login response
+   - `auth.client_token`
+   - `auth.metadata.role_name`
 
-3. Call out the SPIFFE URI SAN value:
+3. In `pki-issue`, call out:
+   - the PKI role definition
+   - the raw certificate issuance response
+   - the raw `payments-api.crt`
+   - the `openssl x509 -text` output
+   - the URI SAN value:
 
    ```text
    spiffe://hashibank.demo/payments/api
    ```
 
-4. If you want to show where the generated certificate lands on disk, point to:
+4. In `spiffe-x509-auth`, call out:
+   - the SPIFFE X.509 auth role definition
+   - the raw login response
+   - the policy mapping result
 
-   ```text
-   openssl x509 -text -in demo/runtime/generated/payments-api.crt
-   demo/runtime/generated/payments-api.crt
-   demo/runtime/generated/payments-api.key
-   ```
+5. In `payments-api-kv-secrets`, call out:
+   - the raw Vault read response
+   - the fact that the KV secrets are unlocked only after the SPIFFE-authenticated login
 
 ### Suggested talk track
 
-- "The payments workload starts with AppRole on `hashibank-identity`. That is the issuer-side machine auth path."
-- "Vault PKI issues an X.509 certificate with the SPIFFE URI SAN for `payments-api`."
-- "The second Vault cluster trusts that SPIFFE identity through the SPIFFE X.509 auth path."
-- "The important outcome is policy mapping. The workload gets payments-scoped access without a static shared token."
+- "The payments API starts with AppRole because we still need a machine-auth path into Vault."
+- "Vault PKI issues a certificate that carries the SPIFFE URI SAN for `payments-api`."
+- "The same Vault cluster then accepts that certificate through the SPIFFE X.509 auth mount and maps it to a payments policy."
+- "The outcome is not just successful auth. The outcome is access to payments API KV secrets without a static shared token."
 
-### What the audience should take away
+### Audience takeaway
 
-- Vault can issue X.509 credentials that carry SPIFFE naming.
-- A relying-party Vault cluster can accept that identity and map it to a narrow policy outcome.
-- The flow is useful when the customer wants X.509-based workload identity with precise access boundaries.
-
-### Transition line
-
-Use this line before the next scenario:
-
-- "The first scenario proves identity-to-policy mapping. The next scenario proves that the same model can unlock a real banking outcome after authentication."
+- Vault can issue X.509 credentials with SPIFFE naming.
+- Vault can use SPIFFE X.509 auth to map that identity to a narrow banking policy outcome.
+- This is useful when the customer wants X.509-based workload identity with precise access boundaries.
 
 ## Scenario 2: Fraud Ops JWT-SVID to dynamic Postgres credentials
 
 ### Business context
 
-HashiBank runs a fraud dashboard that needs to read flagged transaction data. The bank does not want the application to keep a static database password. It wants the workload to authenticate with short-lived identity, get short-lived database credentials, and read only the rows it needs.
+HashiBank runs a fraud operations dashboard that needs to read flagged transaction data. The bank does not want the application to keep a static database password. It wants a short-lived workload identity to become short-lived database access.
 
 ### Operator steps
 
-1. In the demo terminal, run:
+1. Run the checkpoints in order:
 
    ```bash
-   ./scripts/demo-jwt-fraud.sh
+   ./scripts/demo-jwt-fraud.sh approle-login
+   ./scripts/demo-jwt-fraud.sh mint-jwt
+   ./scripts/demo-jwt-fraud.sh spiffe-jwt-auth
+   ./scripts/demo-jwt-fraud.sh db-creds
+   ./scripts/demo-jwt-fraud.sh final-reveal
    ```
 
-2. In the JSON output, point out these fields:
-   - `spiffe_subject`
-   - `vault_policies`
-   - `db_username`
-   - `db_lease_id`
-   - `db_lease_duration`
+2. In `approle-login`, call out:
+   - the AppRole alias metadata
+   - the raw login response
 
-3. Call out the SPIFFE subject value:
+3. In `mint-jwt`, call out:
+   - the SPIFFE role definition
+   - the raw mint response
+   - the raw JWT-SVID
+   - the `sub` value:
 
    ```text
    spiffe://hashibank.demo/fraud/ops-web
    ```
 
-4. Open the browser page:
+4. In `spiffe-jwt-auth`, call out:
+   - the SPIFFE JWT auth role definition
+   - the raw login response
+   - the policies in the returned auth block
 
-   ```text
-   http://localhost:18081/
-   ```
+5. In `db-creds`, call out:
+   - the raw database credentials response
+   - `db_username`
+   - `lease_id`
+   - `lease_duration`
 
-5. Point out the rendered fields on the page:
-   - SPIFFE subject
-   - dynamic database username
-   - lease information
-   - flagged transaction rows from `fraud_alerts`
+6. In `final-reveal`, call out:
+   - the SQL-backed result set
+   - then refresh `http://localhost:18081/`
 
 ### Suggested talk track
 
-- "This workload authenticates to `hashibank-identity` with AppRole and mints a SPIFFE JWT-SVID."
-- "It presents that JWT to `hashibank-access`, which returns a Vault token based on the workload identity."
-- "That Vault token reads dynamic Postgres credentials from the database secrets engine."
-- "The app uses those short-lived credentials to query the `fraud_alerts` table and render live banking data."
-- "This is the business-value scenario. Authentication is the bridge to controlled data access, not the end state."
+- "Here the same Vault cluster mints the JWT-SVID and then accepts it back through SPIFFE JWT auth."
+- "That authenticated Vault token reads dynamic Postgres credentials."
+- "The fraud dashboard uses those short-lived credentials to read real fraud alert rows."
+- "This is the most practical business proof in the demo: identity becomes data access, not just a token exchange."
 
-### What the audience should take away
+### Audience takeaway
 
 - Vault can mint a standards-aligned JWT workload identity from its internal identity graph.
-- SPIFFE auth can exchange that identity for policy-scoped Vault access.
-- Vault can convert that access into short-lived database credentials tied to a real business function.
-
-### Transition line
-
-Use this line before the next scenario:
-
-- "The fraud flow stays within the Vault trust boundary. The last scenario shows that a Vault-minted SPIFFE JWT can also work with an external relying party that only understands OIDC-style validation."
+- SPIFFE auth can exchange that identity for a policy-scoped Vault token.
+- Vault can turn that token into short-lived database credentials tied to a concrete banking use case.
 
 ## Scenario 3: Relationship assistant with OIDC validation
 
 ### Business context
 
-HashiBank wants an internal relationship-assistant experience for bankers. That assistant needs portable workload identity across system boundaries. The relying party should be able to validate the workload token without adopting Vault-native identity semantics.
+HashiBank wants an internal banker assistant that can carry portable workload identity across system boundaries. The assistant service should be able to validate the workload JWT through discovery and JWKS without depending on Vault-native auth semantics.
 
 ### Operator steps
 
-1. In the demo terminal, run:
+1. Run the checkpoints in order:
 
    ```bash
-   ./scripts/demo-agentic-oidc.sh
+   ./scripts/demo-agentic-oidc.sh approle-login
+   ./scripts/demo-agentic-oidc.sh mint-jwt
+   ./scripts/demo-agentic-oidc.sh fetch-discovery
+   ./scripts/demo-agentic-oidc.sh validate-jwt
+   ./scripts/demo-agentic-oidc.sh final-reveal
    ```
 
-2. In the JSON output, point out these fields:
-   - `validated_claims.sub`
-   - `validated_claims.iss`
-   - `validated_claims.aud`
-   - `contexts`
+2. In `approle-login`, call out:
+   - the AppRole alias metadata
+   - the raw login response
 
-3. Call out the SPIFFE subject value:
+3. In `mint-jwt`, call out:
+   - the SPIFFE role definition
+   - the raw mint response
+   - the raw JWT-SVID
 
-   ```text
-   spiffe://hashibank.demo/ai/relationship-assistant
-   ```
+4. In `fetch-discovery`, call out:
+   - the discovery document
+   - the `jwks_uri`
+   - the JWKS response
 
-4. Open the browser page:
+5. In `validate-jwt`, call out:
+   - the validated claims
+   - `sub`
+   - `iss`
+   - `aud`
+
+6. In `final-reveal`, refresh:
 
    ```text
    http://localhost:18082/
    ```
 
-5. Point out the rendered fields on the page:
-   - validated SPIFFE subject
-   - issuer and audience
-   - masked banker context for the assistant persona
-
 ### Suggested talk track
 
-- "This workload also authenticates with AppRole and mints a SPIFFE JWT-SVID from `hashibank-identity`."
-- "The relying party resolves the SPIFFE engine discovery document and JWKS endpoints."
-- "It validates the JWT through OIDC-style patterns instead of Vault-native auth."
-- "After validation, the assistant renders masked banking context for the banker experience."
-- "This makes the AI or agentic story concrete. The identity model stays consistent even when the consumer sits outside Vault."
+- "This scenario uses the same SPIFFE JWT model, but the consumer is a banker assistant service rather than Vault auth."
+- "The service resolves discovery and JWKS from the SPIFFE engine and validates the JWT with OIDC-style patterns."
+- "That keeps the identity model portable across tool boundaries."
+- "The assistant page is the business-facing proof that the JWT was validated successfully."
 
-### What the audience should take away
+### Audience takeaway
 
-- Vault-minted SPIFFE JWTs are not limited to Vault-to-Vault flows.
-- OIDC-aware consumers can validate the tokens through published discovery and keys endpoints.
-- SPIFFE gives the customer a portable workload identifier across tool boundaries.
+- Vault-minted SPIFFE JWTs are not limited to Vault auth flows.
+- Discovery and JWKS make the JWT usable by downstream services that speak standard OIDC-style validation patterns.
+- SPIFFE gives the customer a portable workload identifier that fits real banking use cases.
 
 ## Closing talk track
 
-Use this closing after the third scenario:
+Use this after the third scenario:
 
 - "HashiBank uses Vault as the trust and policy plane, not as a generic token vending machine."
 - "SPIFFE IDs sit above Vault entities and aliases as the portable workload identifier layer."
-- "The demo shows three concrete outcomes: X.509 policy mapping, JWT-to-database access, and external OIDC-style validation."
+- "The demo shows three concrete outcomes: payments API policy mapping, fraud data access, and banker assistant validation."
 - "If the customer needs deep workload attestation, pair Vault with an attestation system instead of over-claiming Vault alone."
 
 ## Reset after the demo
@@ -222,5 +245,3 @@ When you finish the session, run:
 ```bash
 ./scripts/teardown.sh
 ```
-
-The teardown script stops the stack and removes generated runtime and TLS artifacts.
