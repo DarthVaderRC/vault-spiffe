@@ -5,8 +5,6 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
-IDENTITY_RUNTIME_DIR="$RUNTIME_DIR/hashibank-identity"
-ACCESS_RUNTIME_DIR="$RUNTIME_DIR/hashibank-access"
 APPROLE_DIR="$RUNTIME_DIR/approle"
 TRUST_DIR="$RUNTIME_DIR/trust"
 TEMPLATE_DIR="$RUNTIME_DIR/templates"
@@ -38,8 +36,6 @@ generate_server_cert() {
     return 0
   fi
 
-  # Include both the Compose service name and localhost so the same Vault listener
-  # certificate works for container-to-container traffic and host-side access.
   cat >"$ext_file" <<EOF
 subjectAltName=DNS:${service_name},DNS:localhost,IP:127.0.0.1
 extendedKeyUsage=serverAuth
@@ -67,91 +63,103 @@ extract_init_value() {
 }
 
 initialise_and_unseal() {
-  local service="$1"
-  local runtime_dir="$2"
-  local init_file="$runtime_dir/init.txt"
-  local token_file="$runtime_dir/root-token"
+  local init_file="$VAULT_RUNTIME_DIR/init.txt"
   local initialized
   local sealed
   local unseal_key
   local root_token
 
-  initialized=$(read_status_value "$service" "Initialized" || true)
+  initialized=$(read_status_value "Initialized" || true)
   if [[ "$initialized" != "true" ]]; then
-    echo "Initializing $service..."
-    vault_exec "$service" "vault operator init -key-shares=1 -key-threshold=1" >"$init_file"
+    echo "Initializing $VAULT_SERVICE..."
+    vault_exec "vault operator init -key-shares=1 -key-threshold=1" >"$init_file"
   elif [[ ! -f "$init_file" ]]; then
-    echo "Expected $init_file for already initialized $service" >&2
+    echo "Expected $init_file for already initialized $VAULT_SERVICE" >&2
     exit 1
   fi
 
   unseal_key=$(extract_init_value "$init_file" "Unseal Key 1")
   root_token=$(extract_init_value "$init_file" "Initial Root Token")
-  printf '%s' "$root_token" >"$token_file"
+  printf '%s' "$root_token" >"$ROOT_TOKEN_FILE"
 
-  sealed=$(read_status_value "$service" "Sealed" || true)
+  sealed=$(read_status_value "Sealed" || true)
   if [[ "$sealed" == "true" ]]; then
-    echo "Unsealing $service..."
-    vault_exec "$service" "vault operator unseal $unseal_key" >/dev/null
+    echo "Unsealing $VAULT_SERVICE..."
+    vault_exec "vault operator unseal $unseal_key" >/dev/null
   fi
 }
 
 write_policies() {
-  local service="$1"
-  local root_token="$2"
-  shift 2
+  local root_token="$1"
+  shift
 
   for policy in "$@"; do
-    vault_exec "$service" "VAULT_TOKEN=$root_token vault policy write ${policy%.hcl} /vault/policies/${policy}.hcl" >/dev/null
+    vault_exec "VAULT_TOKEN=$root_token vault policy write ${policy%.hcl} /vault/policies/${policy}.hcl" >/dev/null
   done
 }
 
-configure_identity() {
+configure_vault() {
   local root_token
   local approle_accessor
   local fraud_template
   local assistant_template
 
-  root_token=$(<"$IDENTITY_RUNTIME_DIR/root-token")
+  root_token=$(<"$ROOT_TOKEN_FILE")
 
-  write_policies hashibank-identity "$root_token" \
+  write_policies "$root_token" \
     identity-payments-issuer \
     identity-fraud-spiffe \
-    identity-assistant-spiffe
+    identity-assistant-spiffe \
+    access-payments \
+    access-fraud
 
-  if ! vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault auth list | grep -q '^approle/'"; then
-    vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault auth enable approle" >/dev/null
+  if ! vault_exec "VAULT_TOKEN=$root_token vault auth list | grep -q '^approle/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault auth enable approle" >/dev/null
   fi
 
-  if ! vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault secrets list | grep -q '^pki/'"; then
-    vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault secrets enable pki" >/dev/null
+  if ! vault_exec "VAULT_TOKEN=$root_token vault auth list | grep -q '^spiffe-x509/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault auth enable -path=spiffe-x509 spiffe" >/dev/null
   fi
 
-  if ! vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault secrets list | grep -q '^spiffe/'"; then
-    vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault secrets enable spiffe" >/dev/null
+  if ! vault_exec "VAULT_TOKEN=$root_token vault auth list | grep -q '^spiffe-jwt/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault auth enable -path=spiffe-jwt -passthrough-request-headers=Authorization spiffe" >/dev/null
   fi
 
-  if ! vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault read pki/cert/ca >/dev/null 2>&1"; then
-    vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write pki/root/generate/internal common_name='HashiBank Demo SPIFFE Root' ttl=8760h" >/dev/null
+  if ! vault_exec "VAULT_TOKEN=$root_token vault secrets list | grep -q '^pki/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault secrets enable pki" >/dev/null
   fi
 
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault read -field=certificate pki/cert/ca" >"$TRUST_DIR/hashibank-spiffe-root.pem"
+  if ! vault_exec "VAULT_TOKEN=$root_token vault secrets list | grep -q '^spiffe/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault secrets enable spiffe" >/dev/null
+  fi
 
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write pki/roles/payments-spiffe allow_any_name=true enforce_hostnames=false require_cn=false allowed_uri_sans='spiffe://hashibank.demo/payments/*' max_ttl=1h" >/dev/null
+  if ! vault_exec "VAULT_TOKEN=$root_token vault secrets list | grep -q '^kv/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault secrets enable -path=kv kv-v2" >/dev/null
+  fi
 
-  # OIDC compatibility lets non-Vault consumers validate minted JWT-SVIDs through
-  # discovery and JWKS endpoints published by the SPIFFE secrets engine.
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write spiffe/config trust_domain=hashibank.demo jwt_issuer_url=https://hashibank-identity:8200/v1/spiffe jwt_oidc_compatibility_mode=true key_lifetime=24h bundle_refresh_hint=1h" >/dev/null
+  if ! vault_exec "VAULT_TOKEN=$root_token vault secrets list | grep -q '^database/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault secrets enable database" >/dev/null
+  fi
 
-  # Create AppRole roles with raw JSON so alias_metadata reliably lands on the
-  # resulting entity alias and can drive the SPIFFE subject template.
+  if ! vault_exec "VAULT_TOKEN=$root_token vault read pki/cert/ca >/dev/null 2>&1"; then
+    vault_exec "VAULT_TOKEN=$root_token vault write pki/root/generate/internal common_name='HashiBank Demo SPIFFE Root' ttl=8760h" >/dev/null
+  fi
+
+  vault_exec "VAULT_TOKEN=$root_token vault read -field=certificate pki/cert/ca" >"$TRUST_DIR/hashibank-spiffe-root.pem"
+
+  vault_exec "VAULT_TOKEN=$root_token vault write pki/roles/payments-spiffe allow_any_name=true enforce_hostnames=false require_cn=false allowed_uri_sans='spiffe://hashibank.demo/payments/*' max_ttl=1h" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write spiffe/config trust_domain=hashibank.demo jwt_issuer_url=https://hashibank-vault:8200/v1/spiffe jwt_oidc_compatibility_mode=true key_lifetime=24h bundle_refresh_hint=1h" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault auth tune -passthrough-request-headers=Authorization spiffe-jwt/" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write auth/spiffe-x509/config trust_domain=hashibank.demo profile=static bundle=@/vault/runtime/trust/hashibank-spiffe-root.pem" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write auth/spiffe-jwt/config trust_domain=hashibank.demo profile=https_web_bundle endpoint_url=https://hashibank-vault:8200/v1/spiffe/trust_bundle/web endpoint_root_ca_truststore_pem=@/vault/config/tls/hashibank-root-ca.crt audience=hashibank-vault" >/dev/null
+
   curl --silent --show-error --fail \
     --cacert "$ROOT_CA_FILE" \
     --header "X-Vault-Token: $root_token" \
     --header "Content-Type: application/json" \
     --request POST \
     --data '{"token_type":"batch","token_policies":["identity-payments-issuer"],"alias_metadata":{"spiffe_path":"payments/api","app":"payments-api","line_of_business":"payments"}}' \
-    "$IDENTITY_HOST_ADDR/v1/auth/approle/role/payments-api" >/dev/null
+    "$VAULT_HOST_ADDR/v1/auth/approle/role/payments-api" >/dev/null
 
   curl --silent --show-error --fail \
     --cacert "$ROOT_CA_FILE" \
@@ -159,7 +167,7 @@ configure_identity() {
     --header "Content-Type: application/json" \
     --request POST \
     --data '{"token_type":"batch","token_policies":["identity-fraud-spiffe"],"alias_metadata":{"spiffe_path":"fraud/ops-web","app":"fraud-ops-web","line_of_business":"fraud"}}' \
-    "$IDENTITY_HOST_ADDR/v1/auth/approle/role/fraud-ops-web" >/dev/null
+    "$VAULT_HOST_ADDR/v1/auth/approle/role/fraud-ops-web" >/dev/null
 
   curl --silent --show-error --fail \
     --cacert "$ROOT_CA_FILE" \
@@ -167,17 +175,13 @@ configure_identity() {
     --header "Content-Type: application/json" \
     --request POST \
     --data '{"token_type":"batch","token_policies":["identity-assistant-spiffe"],"alias_metadata":{"spiffe_path":"ai/relationship-assistant","app":"relationship-assistant","line_of_business":"wealth"}}' \
-    "$IDENTITY_HOST_ADDR/v1/auth/approle/role/relationship-assistant" >/dev/null
+    "$VAULT_HOST_ADDR/v1/auth/approle/role/relationship-assistant" >/dev/null
 
-  # SPIFFE templates address alias metadata through the auth mount accessor, so
-  # resolve it once and use it in both JWT role templates.
-  approle_accessor=$(vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault auth list" | awk '$1 == "approle/" {print $3}')
+  approle_accessor=$(vault_exec "VAULT_TOKEN=$root_token vault auth list" | awk '$1 == "approle/" {print $3}')
 
   fraud_template="$TEMPLATE_DIR/fraud-ops-web-template.json"
   assistant_template="$TEMPLATE_DIR/relationship-assistant-template.json"
 
-  # Derive the SPIFFE subject from AppRole alias metadata instead of hard-coding
-  # workload IDs in the issuing role.
   cat >"$fraud_template" <<EOF
 {"sub":"spiffe://hashibank.demo/{{identity.entity.aliases.${approle_accessor}.custom_metadata.spiffe_path}}","bank":"HashiBank"}
 EOF
@@ -186,93 +190,145 @@ EOF
 {"sub":"spiffe://hashibank.demo/{{identity.entity.aliases.${approle_accessor}.custom_metadata.spiffe_path}}","bank":"HashiBank"}
 EOF
 
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write spiffe/role/fraud-ops-web template=@/vault/runtime/templates/fraud-ops-web-template.json ttl=15m use_jti_claim=true" >/dev/null
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write spiffe/role/relationship-assistant template=@/vault/runtime/templates/relationship-assistant-template.json ttl=15m use_jti_claim=true" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write spiffe/role/fraud-ops-web template=@/vault/runtime/templates/fraud-ops-web-template.json ttl=15m use_jti_claim=true" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write spiffe/role/relationship-assistant template=@/vault/runtime/templates/relationship-assistant-template.json ttl=15m use_jti_claim=true" >/dev/null
 
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault read -field=role_id auth/approle/role/payments-api/role-id" >"$APPROLE_DIR/payments-api.role_id"
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/payments-api/secret-id" >"$APPROLE_DIR/payments-api.secret_id"
+  vault_exec "VAULT_TOKEN=$root_token vault kv put kv/payments/api-secrets service=payments-api trust_domain=hashibank.demo message='Payments API KV secrets unlocked through SPIFFE X.509 auth'" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write database/config/hashibank-postgres plugin_name=postgresql-database-plugin allowed_roles=fraud-readonly connection_url='postgresql://{{username}}:{{password}}@postgres-hashibank:5432/hashibank?sslmode=disable' username=vaultadmin password=vaultadminpw password_authentication=scram-sha-256" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write database/roles/fraud-readonly db_name=hashibank-postgres creation_statements=\"CREATE ROLE \\\"{{name}}\\\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT CONNECT ON DATABASE hashibank TO \\\"{{name}}\\\"; GRANT USAGE ON SCHEMA public TO \\\"{{name}}\\\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \\\"{{name}}\\\";\" default_ttl=1h max_ttl=24h" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write auth/spiffe-x509/role/payments-api display_name=payments-api token_type=batch token_policies=access-payments workload_id_patterns=payments/api" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write auth/spiffe-jwt/role/fraud-ops-web display_name=fraud-ops-web token_type=batch token_policies=access-fraud workload_id_patterns=fraud/ops-web" >/dev/null
 
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault read -field=role_id auth/approle/role/fraud-ops-web/role-id" >"$APPROLE_DIR/fraud-ops-web.role_id"
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/fraud-ops-web/secret-id" >"$APPROLE_DIR/fraud-ops-web.secret_id"
-
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault read -field=role_id auth/approle/role/relationship-assistant/role-id" >"$APPROLE_DIR/relationship-assistant.role_id"
-  vault_exec hashibank-identity "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/relationship-assistant/secret-id" >"$APPROLE_DIR/relationship-assistant.secret_id"
+  vault_exec "VAULT_TOKEN=$root_token vault read -field=role_id auth/approle/role/payments-api/role-id" >"$APPROLE_DIR/payments-api.role_id"
+  vault_exec "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/payments-api/secret-id" >"$APPROLE_DIR/payments-api.secret_id"
+  vault_exec "VAULT_TOKEN=$root_token vault read -field=role_id auth/approle/role/fraud-ops-web/role-id" >"$APPROLE_DIR/fraud-ops-web.role_id"
+  vault_exec "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/fraud-ops-web/secret-id" >"$APPROLE_DIR/fraud-ops-web.secret_id"
+  vault_exec "VAULT_TOKEN=$root_token vault read -field=role_id auth/approle/role/relationship-assistant/role-id" >"$APPROLE_DIR/relationship-assistant.role_id"
+  vault_exec "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/relationship-assistant/secret-id" >"$APPROLE_DIR/relationship-assistant.secret_id"
 }
 
-configure_access() {
-  local root_token
-
-  root_token=$(<"$ACCESS_RUNTIME_DIR/root-token")
-
-  write_policies hashibank-access "$root_token" access-payments access-fraud
-
-  if ! vault_exec hashibank-access "VAULT_TOKEN=$root_token vault secrets list | grep -q '^kv/'"; then
-    vault_exec hashibank-access "VAULT_TOKEN=$root_token vault secrets enable -path=kv kv-v2" >/dev/null
+review_bootstrap() {
+  if [[ ! -f "$ROOT_TOKEN_FILE" ]]; then
+    echo "Bootstrap state not found. Run ./scripts/bootstrap.sh first." >&2
+    exit 1
   fi
 
-  if ! vault_exec hashibank-access "VAULT_TOKEN=$root_token vault secrets list | grep -q '^database/'"; then
-    vault_exec hashibank-access "VAULT_TOKEN=$root_token vault secrets enable database" >/dev/null
-  fi
+  show_json_command "Vault health" "
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  '$VAULT_HOST_ADDR/v1/sys/health'
+"
 
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault kv put kv/payments/bootstrap service=payments-api trust_domain=hashibank.demo message='Payments proof path unlocked through SPIFFE X.509 auth'" >/dev/null
+  show_command_output "Payments API issuer policy" "cat '$DEMO_DIR/policies/identity-payments-issuer.hcl'"
+  show_command_output "Fraud SPIFFE policy" "cat '$DEMO_DIR/policies/identity-fraud-spiffe.hcl'"
+  show_command_output "Assistant SPIFFE policy" "cat '$DEMO_DIR/policies/identity-assistant-spiffe.hcl'"
+  show_command_output "Payments access policy" "cat '$DEMO_DIR/policies/access-payments.hcl'"
+  show_command_output "Fraud access policy" "cat '$DEMO_DIR/policies/access-fraud.hcl'"
 
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write database/config/hashibank-postgres plugin_name=postgresql-database-plugin allowed_roles=fraud-readonly connection_url='postgresql://{{username}}:{{password}}@postgres-hashibank:5432/hashibank?sslmode=disable' username=vaultadmin password=vaultadminpw password_authentication=scram-sha-256" >/dev/null
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write database/roles/fraud-readonly db_name=hashibank-postgres creation_statements=\"CREATE ROLE \\\"{{name}}\\\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT CONNECT ON DATABASE hashibank TO \\\"{{name}}\\\"; GRANT USAGE ON SCHEMA public TO \\\"{{name}}\\\"; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \\\"{{name}}\\\";\" default_ttl=1h max_ttl=24h" >/dev/null
+  show_json_command "Payments AppRole definition" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/auth/approle/role/payments-api'
+"
 
-  # Keep separate auth mounts so the demo can show X.509 and JWT SPIFFE logins
-  # side by side without reconfiguring the same mount between scenarios.
-  if ! vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth list | grep -q '^spiffe-x509/'"; then
-    vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth enable -path=spiffe-x509 spiffe" >/dev/null
-  fi
+  show_json_command "Fraud AppRole definition" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/auth/approle/role/fraud-ops-web'
+"
 
-  if ! vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth list | grep -q '^spiffe-jwt/'"; then
-    vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth enable -path=spiffe-jwt -passthrough-request-headers=Authorization spiffe" >/dev/null
-  fi
+  show_json_command "Assistant AppRole definition" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/auth/approle/role/relationship-assistant'
+"
 
-  # JWT-based SPIFFE auth expects the original Authorization header to reach the mount.
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault auth tune -passthrough-request-headers=Authorization spiffe-jwt/" >/dev/null
+  show_json_command "PKI role for payments certificates" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/pki/roles/payments-spiffe'
+"
 
-  # X.509 auth trusts a local bundle copied from the issuer cluster. JWT auth uses
-  # the issuer cluster's published web bundle so non-static trust still works.
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write auth/spiffe-x509/config trust_domain=hashibank.demo profile=static bundle=@/vault/runtime/trust/hashibank-spiffe-root.pem" >/dev/null
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write auth/spiffe-jwt/config trust_domain=hashibank.demo profile=https_web_bundle endpoint_url=https://hashibank-identity:8200/v1/spiffe/trust_bundle/web endpoint_root_ca_truststore_pem=@/vault/config/tls/hashibank-root-ca.crt audience=hashibank-access" >/dev/null
+  show_json_command "SPIFFE engine configuration" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/spiffe/config'
+"
 
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write auth/spiffe-x509/role/payments-api display_name=payments-api token_type=batch token_policies=access-payments workload_id_patterns=payments/api" >/dev/null
-  vault_exec hashibank-access "VAULT_TOKEN=$root_token vault write auth/spiffe-jwt/role/fraud-ops-web display_name=fraud-ops-web token_type=batch token_policies=access-fraud workload_id_patterns=fraud/ops-web" >/dev/null
+  show_json_command "Fraud SPIFFE role definition" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/spiffe/role/fraud-ops-web'
+"
+
+  show_json_command "Assistant SPIFFE role definition" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/spiffe/role/relationship-assistant'
+"
+
+  show_json_command "SPIFFE X.509 auth role" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/auth/spiffe-x509/role/payments-api'
+"
+
+  show_json_command "SPIFFE JWT auth role" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/auth/spiffe-jwt/role/fraud-ops-web'
+"
+
+  show_json_command "Payments API KV secrets" "
+ROOT_TOKEN=\$(cat '$ROOT_TOKEN_FILE')
+curl --silent --show-error --fail \
+  --cacert '$ROOT_CA_FILE' \
+  --header \"X-Vault-Token: \$ROOT_TOKEN\" \
+  '$VAULT_HOST_ADDR/v1/kv/data/payments/api-secrets'
+"
 }
 
-main() {
-  # Preserve init data, role IDs, trust material, and generated certificates under
-  # demo/runtime so the walkthrough can inspect them after bootstrap.
+bootstrap_demo() {
   mkdir -p \
-    "$IDENTITY_RUNTIME_DIR/file" \
-    "$ACCESS_RUNTIME_DIR/file" \
+    "$VAULT_RUNTIME_DIR/file" \
     "$APPROLE_DIR" \
     "$TRUST_DIR" \
     "$TEMPLATE_DIR" \
     "$RUNTIME_DIR/generated" \
-    "$TLS_DIR" \
-    "$RUNTIME_DIR/postgres"
+    "$RUNTIME_DIR/postgres" \
+    "$TLS_DIR"
 
   generate_root_ca
-  generate_server_cert "hashibank-identity" "hashibank-identity"
-  generate_server_cert "hashibank-access" "hashibank-access"
+  generate_server_cert "hashibank-vault" "hashibank-vault"
 
-  echo "Starting core demo services..."
-  compose up -d --build hashibank-identity hashibank-access postgres-hashibank demo-tools
+  echo "Starting HashiBank Vault Cluster and demo services..."
+  compose up -d --build hashibank-vault postgres-hashibank demo-tools
 
-  wait_for_https "hashibank-identity" "$IDENTITY_HOST_ADDR"
-  wait_for_https "hashibank-access" "$ACCESS_HOST_ADDR"
+  wait_for_https "$VAULT_SERVICE" "$VAULT_HOST_ADDR"
   wait_for_postgres
 
-  initialise_and_unseal "hashibank-identity" "$IDENTITY_RUNTIME_DIR"
-  initialise_and_unseal "hashibank-access" "$ACCESS_RUNTIME_DIR"
+  initialise_and_unseal
 
-  echo "Configuring hashibank-identity..."
-  configure_identity
-
-  echo "Configuring hashibank-access..."
-  configure_access
+  echo "Configuring HashiBank Vault Cluster..."
+  configure_vault
 
   echo "Starting web experiences..."
   compose up -d --build hashibank-fraud-web hashibank-assistant
@@ -281,15 +337,32 @@ main() {
 
 HashiBank Vault SPIFFE demo is ready.
 
+Bootstrap review:
+  ./scripts/bootstrap.sh review
+
 Payments API X.509 flow:
-  ./scripts/demo-x509-payments.sh
+  ./scripts/demo-x509-payments.sh approle-login
+  ./scripts/demo-x509-payments.sh pki-issue
+  ./scripts/demo-x509-payments.sh spiffe-x509-auth
+  ./scripts/demo-x509-payments.sh payments-api-kv-secrets
+  ./scripts/demo-x509-payments.sh    # rerun full flow
 
 Fraud Ops flow:
-  ./scripts/demo-jwt-fraud.sh
+  ./scripts/demo-jwt-fraud.sh approle-login
+  ./scripts/demo-jwt-fraud.sh mint-jwt
+  ./scripts/demo-jwt-fraud.sh spiffe-jwt-auth
+  ./scripts/demo-jwt-fraud.sh db-creds
+  ./scripts/demo-jwt-fraud.sh final-reveal
+  ./scripts/demo-jwt-fraud.sh         # rerun full flow
   http://localhost:${FRAUD_WEB_PORT}/
 
 Relationship assistant flow:
-  ./scripts/demo-agentic-oidc.sh
+  ./scripts/demo-agentic-oidc.sh approle-login
+  ./scripts/demo-agentic-oidc.sh mint-jwt
+  ./scripts/demo-agentic-oidc.sh fetch-discovery
+  ./scripts/demo-agentic-oidc.sh validate-jwt
+  ./scripts/demo-agentic-oidc.sh final-reveal
+  ./scripts/demo-agentic-oidc.sh      # rerun full flow
   http://localhost:${ASSISTANT_WEB_PORT}/
 
 To tear down and clean generated local artifacts:
@@ -297,4 +370,15 @@ To tear down and clean generated local artifacts:
 EOF
 }
 
-main "$@"
+case "${1:-up}" in
+  review)
+    review_bootstrap
+    ;;
+  up|bootstrap)
+    bootstrap_demo
+    ;;
+  *)
+    echo "Usage: ./scripts/bootstrap.sh [review]" >&2
+    exit 1
+    ;;
+esac

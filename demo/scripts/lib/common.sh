@@ -8,23 +8,22 @@ COMPOSE_FILE="$DEMO_DIR/docker-compose.yml"
 RUNTIME_DIR="$DEMO_DIR/runtime"
 TLS_DIR="$DEMO_DIR/config/tls"
 ROOT_CA_FILE="$TLS_DIR/hashibank-root-ca.crt"
-IDENTITY_HOST_PORT="${HASHIBANK_IDENTITY_HOST_PORT:-18200}"
-ACCESS_HOST_PORT="${HASHIBANK_ACCESS_HOST_PORT:-18300}"
+VAULT_SERVICE="hashibank-vault"
+VAULT_HOST_PORT="${HASHIBANK_VAULT_HOST_PORT:-18200}"
+VAULT_HOST_ADDR="https://localhost:${VAULT_HOST_PORT}"
+VAULT_RUNTIME_DIR="$RUNTIME_DIR/hashibank-vault"
+ROOT_TOKEN_FILE="$VAULT_RUNTIME_DIR/root-token"
 FRAUD_WEB_PORT="${HASHIBANK_FRAUD_WEB_PORT:-18081}"
 ASSISTANT_WEB_PORT="${HASHIBANK_ASSISTANT_WEB_PORT:-18082}"
-IDENTITY_HOST_ADDR="https://localhost:${IDENTITY_HOST_PORT}"
-ACCESS_HOST_ADDR="https://localhost:${ACCESS_HOST_PORT}"
 
 compose() {
   docker compose -f "$COMPOSE_FILE" "$@"
 }
 
 vault_exec() {
-  local service="$1"
-  shift
   # Run Vault CLI commands inside the service container so they use container-local
   # DNS names and the demo CA bundle instead of host networking assumptions.
-  compose exec -T "$service" sh -lc "export VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/config/tls/hashibank-root-ca.crt; $*"
+  compose exec -T "$VAULT_SERVICE" sh -lc "export VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/config/tls/hashibank-root-ca.crt; $*"
 }
 
 wait_for_https() {
@@ -54,9 +53,51 @@ wait_for_postgres() {
   return 1
 }
 
-read_status_value() {
-  local service="$1"
-  local field="$2"
+wait_for_http() {
+  local name="$1"
+  local url="$2"
 
-  vault_exec "$service" "vault status" | awk -v target="$field" '$1 == target {print $2}'
+  for _ in $(seq 1 30); do
+    if curl --silent --show-error --fail "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "$name did not become ready in time" >&2
+  return 1
+}
+
+read_status_value() {
+  local field="$1"
+
+  vault_exec "vault status" | awk -v target="$field" '$1 == target {print $2}'
+}
+
+show_heading() {
+  local title="$1"
+
+  printf '\n=== %s ===\n\n' "$title"
+}
+
+show_command_output() {
+  local title="$1"
+  local command="$2"
+  local output
+
+  show_heading "$title"
+  printf '$ %s\n\n' "$command"
+  output=$(bash -lc "set -euo pipefail; $command")
+  if [[ -n "$output" ]]; then
+    printf '%s\n' "$output"
+  else
+    printf '(no output)\n'
+  fi
+}
+
+show_json_command() {
+  local title="$1"
+  local command="$2"
+
+  show_command_output "$title" "($command) | jq"
 }

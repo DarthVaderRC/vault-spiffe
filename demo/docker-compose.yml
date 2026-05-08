@@ -1,7 +1,7 @@
 name: vault-spiffe-demo
 
 services:
-  hashibank-identity:
+  hashibank-vault:
     image: ${VAULT_ENTERPRISE_IMAGE:-hashicorp/vault-enterprise:2.0.0-ent}
     user: "0:0"
     cap_add:
@@ -9,38 +9,17 @@ services:
     command:
       - vault
       - server
-      - -config=/vault/config/hashibank-identity.hcl
+      - -config=/vault/config/hashibank-vault.hcl
     environment:
       VAULT_LICENSE_PATH: /vault/config/license.hclic
     ports:
-      - "${HASHIBANK_IDENTITY_HOST_PORT:-18200}:8200"
+      - "${HASHIBANK_VAULT_HOST_PORT:-18200}:8200"
     volumes:
       - ../license.hclic:/vault/config/license.hclic:ro
-      - ./config/hashibank-identity.hcl:/vault/config/hashibank-identity.hcl:ro
+      - ./config/hashibank-vault.hcl:/vault/config/hashibank-vault.hcl:ro
       - ./config/tls:/vault/config/tls
       - ./policies:/vault/policies:ro
-      - ./runtime/hashibank-identity/file:/vault/file
-      - ./runtime:/vault/runtime
-
-  hashibank-access:
-    image: ${VAULT_ENTERPRISE_IMAGE:-hashicorp/vault-enterprise:2.0.0-ent}
-    user: "0:0"
-    cap_add:
-      - IPC_LOCK
-    command:
-      - vault
-      - server
-      - -config=/vault/config/hashibank-access.hcl
-    environment:
-      VAULT_LICENSE_PATH: /vault/config/license.hclic
-    ports:
-      - "${HASHIBANK_ACCESS_HOST_PORT:-18300}:8200"
-    volumes:
-      - ../license.hclic:/vault/config/license.hclic:ro
-      - ./config/hashibank-access.hcl:/vault/config/hashibank-access.hcl:ro
-      - ./config/tls:/vault/config/tls
-      - ./policies:/vault/policies:ro
-      - ./runtime/hashibank-access/file:/vault/file
+      - ./runtime/hashibank-vault/file:/vault/file
       - ./runtime:/vault/runtime
 
   postgres-hashibank:
@@ -58,22 +37,8 @@ services:
       context: .
       dockerfile: apps/hashibank-fraud-web/Dockerfile
     depends_on:
-      - hashibank-identity
-      - hashibank-access
+      - hashibank-vault
       - postgres-hashibank
-    environment:
-      HASHIBANK_CA_CERT: /workspace/tls/hashibank-root-ca.crt
-      HASHIBANK_IDENTITY_ADDR: https://hashibank-identity:8200
-      HASHIBANK_ACCESS_ADDR: https://hashibank-access:8200
-      APPROLE_ROLE_ID_FILE: /workspace/runtime/approle/fraud-ops-web.role_id
-      APPROLE_SECRET_ID_FILE: /workspace/runtime/approle/fraud-ops-web.secret_id
-      SPIFFE_ROLE: fraud-ops-web
-      SPIFFE_AUDIENCE: hashibank-access
-      SPIFFE_AUTH_PATH: spiffe-jwt
-      DB_CREDS_PATH: database/creds/fraud-readonly
-      POSTGRES_HOST: postgres-hashibank
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: hashibank
     ports:
       - "${HASHIBANK_FRAUD_WEB_PORT:-18081}:8080"
     volumes:
@@ -85,14 +50,7 @@ services:
       context: .
       dockerfile: apps/hashibank-assistant/Dockerfile
     depends_on:
-      - hashibank-identity
-    environment:
-      HASHIBANK_CA_CERT: /workspace/tls/hashibank-root-ca.crt
-      HASHIBANK_IDENTITY_ADDR: https://hashibank-identity:8200
-      APPROLE_ROLE_ID_FILE: /workspace/runtime/approle/relationship-assistant.role_id
-      APPROLE_SECRET_ID_FILE: /workspace/runtime/approle/relationship-assistant.secret_id
-      SPIFFE_ROLE: relationship-assistant
-      SPIFFE_AUDIENCE: assistant-ui
+      - hashibank-vault
     ports:
       - "${HASHIBANK_ASSISTANT_WEB_PORT:-18082}:8080"
     volumes:
@@ -108,8 +66,7 @@ services:
       - -lc
       - sleep infinity
     depends_on:
-      - hashibank-identity
-      - hashibank-access
+      - hashibank-vault
       - postgres-hashibank
     working_dir: /workspace/demo
     volumes:

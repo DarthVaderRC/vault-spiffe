@@ -5,16 +5,27 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
-compose up -d hashibank-assistant >/dev/null
+ACTION="${1:-all}"
 
-for _ in $(seq 1 30); do
-  if curl --silent --show-error "http://localhost:${ASSISTANT_WEB_PORT}/healthz" >/dev/null 2>&1; then
-    curl --silent --show-error "http://localhost:${ASSISTANT_WEB_PORT}/api/demo"
-    echo
-    exit 0
-  fi
-  sleep 2
-done
+case "$ACTION" in
+  approle-login|mint-jwt|fetch-discovery|validate-jwt|final-reveal|all|status|reset)
+    ;;
+  *)
+    echo "Usage: ./scripts/demo-agentic-oidc.sh [approle-login|mint-jwt|fetch-discovery|validate-jwt|final-reveal|all|status|reset]" >&2
+    exit 1
+    ;;
+esac
 
-echo "hashibank-assistant did not become ready in time" >&2
-exit 1
+if [[ "$ACTION" == "final-reveal" || "$ACTION" == "all" ]]; then
+  compose up -d demo-tools hashibank-assistant >/dev/null
+  wait_for_http "hashibank-assistant" "http://localhost:${ASSISTANT_WEB_PORT}/healthz"
+else
+  compose up -d demo-tools >/dev/null
+fi
+
+compose exec -T demo-tools bash -lc \
+  "export PYTHONPATH=/workspace/demo/python ASSISTANT_WEB_URL=http://localhost:${ASSISTANT_WEB_PORT}/; python /workspace/demo/scripts/internal/assistant_oidc_demo.py '$ACTION'"
+
+if [[ "$ACTION" == "final-reveal" || "$ACTION" == "all" ]]; then
+  curl --silent --show-error --fail "http://localhost:${ASSISTANT_WEB_PORT}/api/demo" >/dev/null
+fi

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urljoin
@@ -164,6 +165,14 @@ def decode_unverified_jwt(token: str) -> dict[str, Any]:
     )
 
 
+def jwt_has_expired(token: str, *, leeway_seconds: int = 0) -> bool:
+    claims = decode_unverified_jwt(token)
+    exp = claims.get("exp")
+    if not isinstance(exp, (int, float)):
+        return False
+    return datetime.now(timezone.utc) >= datetime.fromtimestamp(exp, tz=timezone.utc) - timedelta(seconds=leeway_seconds)
+
+
 def fetch_oidc_configuration(base_url: str, ca_cert: str) -> dict[str, Any]:
     data = _request(
         "GET",
@@ -209,3 +218,12 @@ def extract_uri_sans(certificate_pem: str) -> list[str]:
     extension = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
     sans = extension.value
     return list(sans.get_values_for_type(x509.UniformResourceIdentifier))
+
+
+def certificate_has_expired(certificate_pem: str, *, leeway_seconds: int = 0) -> bool:
+    cert = x509.load_pem_x509_certificate(certificate_pem.encode("utf-8"))
+    if hasattr(cert, "not_valid_after_utc"):
+        not_after = cert.not_valid_after_utc
+    else:
+        not_after = cert.not_valid_after.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) >= not_after - timedelta(seconds=leeway_seconds)
