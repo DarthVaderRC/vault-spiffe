@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vault-spiffe Repository Code Explorer</title>
+  <style>
+    :root {
+      --bg: #061018;
+      --panel: rgba(9, 17, 26, 0.9);
+      --panel-strong: rgba(8, 14, 22, 0.95);
+      --card: rgba(255, 255, 255, 0.04);
+      --line: rgba(149, 189, 198, 0.18);
+      --text: #eff4f3;
+      --muted: #aebdc0;
+      --cyan: #7fd8d6;
+      --amber: #ddb277;
+      --rose: #dd7d84;
+      --green: #8cc78b;
+      --blue: #73aef5;
+      --gray: #80929a;
+      --shadow: 0 26px 70px rgba(0,0,0,0.45);
+      --radius: 24px;
+      --serif: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      --sans: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+      --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 10%, rgba(127, 216, 214, 0.09), transparent 28%),
+        radial-gradient(circle at 88% 16%, rgba(221, 178, 119, 0.11), transparent 24%),
+        linear-gradient(155deg, #07111b 0%, #0a1520 55%, #050d14 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.08;
+      background:
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 34px 34px;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 18px;
+      padding: 20px;
+    }
+
+    .panel,
+    .canvas-shell,
+    .prompt-shell {
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow: hidden;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 18px;
+      min-height: 0;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 0.72rem;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 36px;
+      height: 1px;
+      background: linear-gradient(90deg, var(--cyan), transparent);
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-family: var(--serif);
+    }
+
+    h1 {
+      font-size: 2rem;
+      line-height: 1;
+    }
+
+    .lede,
+    .muted {
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .control-group {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 18px;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .group-title {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+    }
+
+    .preset-grid,
+    .toggle-list,
+    .comment-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .preset-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    .preset,
+    .action,
+    .comment-delete,
+    .zoom-btn {
+      cursor: pointer;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .preset,
+    .action,
+    .zoom-btn {
+      padding: 10px 12px;
+    }
+
+    .preset:hover,
+    .action:hover,
+    .comment-delete:hover,
+    .zoom-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(127, 216, 214, 0.32);
+      background: rgba(127, 216, 214, 0.08);
+    }
+
+    .preset.active {
+      background: linear-gradient(135deg, rgba(127, 216, 214, 0.16), rgba(221, 178, 119, 0.12));
+      border-color: rgba(221, 178, 119, 0.42);
+    }
+
+    .toggle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .toggle label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      cursor: pointer;
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .toggle input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--amber);
+    }
+
+    .detail-card,
+    .comment-card {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .detail-card h3,
+    .comment-card h3 {
+      font-size: 1.05rem;
+      margin-bottom: 6px;
+    }
+
+    .detail-path,
+    .comment-path,
+    .legend small,
+    .copy-status {
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    .detail-list,
+    .comment-card p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .comment-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .comment-delete {
+      justify-self: start;
+      padding: 8px 12px;
+    }
+
+    .canvas-shell {
+      border-radius: 30px;
+      padding: 18px;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 14px;
+      min-height: 0;
+    }
+
+    .canvas-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .canvas-header h2 {
+      font-size: 1.6rem;
+      line-height: 1.05;
+    }
+
+    .chip-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .chip {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .zoom-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .canvas-stage {
+      position: relative;
+      min-height: 0;
+      overflow: auto;
+      border-radius: 24px;
+      background:
+        linear-gradient(180deg, rgba(127,216,214,0.04), transparent 22%),
+        linear-gradient(160deg, rgba(7, 12, 18, 0.96), rgba(8, 15, 23, 0.96));
+      border: 1px solid rgba(255,255,255,0.05);
+      padding: 16px;
+    }
+
+    .canvas-stage::before {
+      content: "";
+      position: absolute;
+      inset: 14px;
+      pointer-events: none;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+
+    svg {
+      width: 1600px;
+      height: 860px;
+      transform-origin: top left;
+      transition: transform 180ms ease;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .legend-line {
+      width: 24px;
+      height: 0;
+      border-top-width: 3px;
+      border-top-style: solid;
+    }
+
+    .prompt-shell {
+      border-radius: 28px;
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+      background: var(--panel-strong);
+    }
+
+    .prompt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .prompt-box {
+      margin: 0;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      font-family: var(--mono);
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: 0.92rem;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.58);
+      backdrop-filter: blur(6px);
+      z-index: 10;
+      padding: 20px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      width: min(640px, 100%);
+      padding: 20px;
+      border-radius: 24px;
+      background: rgba(7, 13, 20, 0.98);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 14px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      resize: vertical;
+      padding: 14px;
+      border-radius: 16px;
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-family: var(--sans);
+      line-height: 1.5;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .secondary {
+      background: rgba(255,255,255,0.03);
+    }
+
+    @media (max-width: 1180px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .app {
+        padding: 12px;
+      }
+
+      .preset-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <div>
+        <div class="eyebrow">Interactive code map</div>
+        <h1>vault-spiffe explorer</h1>
+        <p class="lede">
+          Explore how the repository moves from customer narrative to demo orchestration, Python runtime helpers,
+          and browser reveal apps. Click a component to leave architecture feedback and copy a scoped prompt.
+        </p>
+      </div>
+
+      <section class="control-group">
+        <div class="group-title">Presets</div>
+        <div class="preset-grid" id="presetGrid"></div>
+      </section>
+
+      <section class="control-group">
+        <div class="group-title">Layer visibility</div>
+        <div class="toggle-list" id="layerToggles"></div>
+      </section>
+
+      <section class="control-group">
+        <div class="group-title">Connection filters</div>
+        <div class="toggle-list" id="connectionToggles"></div>
+      </section>
+
+      <section class="control-group">
+        <div class="group-title">Selected component</div>
+        <div class="detail-card" id="selectedCard"></div>
+      </section>
+
+      <section class="control-group">
+        <div class="group-title">Comments</div>
+        <div class="comment-list" id="commentList"></div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <section class="canvas-shell">
+        <div class="canvas-header">
+          <div>
+            <div class="eyebrow">Architecture view</div>
+            <h2>Repository map</h2>
+            <div class="chip-row">
+              <div class="chip" id="scopeChip"></div>
+              <div class="chip">Source: repo structure + sampled runtime files</div>
+            </div>
+          </div>
+          <div class="zoom-controls">
+            <button class="zoom-btn" id="zoomOut" type="button">−</button>
+            <button class="zoom-btn" id="zoomReset" type="button">Reset</button>
+            <button class="zoom-btn" id="zoomIn" type="button">+</button>
+          </div>
+        </div>
+
+        <div class="canvas-stage">
+          <svg id="diagram" viewBox="0 0 1600 860" aria-label="Repository code map"></svg>
+          <div class="legend" id="legend"></div>
+        </div>
+      </section>
+
+      <section class="prompt-shell">
+        <div class="prompt-header">
+          <div>
+            <div class="eyebrow">Prompt output</div>
+            <h3>Copy an architecture follow-up prompt</h3>
+          </div>
+          <button class="action" id="copyPrompt" type="button">Copy prompt</button>
+        </div>
+        <pre class="prompt-box" id="promptBox"></pre>
+        <div class="copy-status" id="copyStatus"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div>
+        <div class="eyebrow">Component feedback</div>
+        <h2 id="modalTitle"></h2>
+        <div class="detail-path" id="modalPath"></div>
+      </div>
+      <textarea id="commentInput" placeholder="Describe the change, concern, or architectural question for this component."></textarea>
+      <div class="modal-actions">
+        <button class="action secondary" id="cancelComment" type="button">Cancel</button>
+        <button class="action" id="saveComment" type="button">Save comment</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const layerMeta = {
+      content: { label: 'Content', color: '#8ec8ff' },
+      orchestration: { label: 'Orchestration', color: '#ddb277' },
+      shell: { label: 'Shell entrypoints', color: '#7fd8d6' },
+      python: { label: 'Python runtime', color: '#8cc78b' },
+      web: { label: 'Web reveals', color: '#dd7d84' }
+    };
+
+    const connectionMeta = {
+      docs: { label: 'Narrative flow', color: '#73aef5', dash: '' },
+      config: { label: 'Config / setup', color: '#ddb277', dash: '7 4' },
+      shell: { label: 'Shell handoff', color: '#7fd8d6', dash: '6 3' },
+      runtime: { label: 'Python helper usage', color: '#8cc78b', dash: '' },
+      ui: { label: 'UI reveal path', color: '#dd7d84', dash: '3 4' }
+    };
+
+    const nodes = [
+      { id: 'readme', label: 'README.md', subtitle: 'repo overview', x: 60, y: 52, w: 190, h: 72, layer: 'content', summary: 'Top-level orientation file for the repo, its demo, and the interactive artifacts.', details: ['Introduces the repo purpose.', 'Points readers to spec.md, the customer deck, the demo runbook, and the HTML tools.'] },
+      { id: 'requirements', label: 'requirements.md', subtitle: 'business ask', x: 300, y: 52, w: 190, h: 72, layer: 'content', summary: 'Captures the original customer ask, narrative goals, and business framing.', details: ['Defines what the deliverable package should answer.', 'Acts as the raw input for the later spec and deck narrative.'] },
+      { id: 'spec', label: 'spec.md', subtitle: 'SDD + constraints', x: 540, y: 52, w: 220, h: 72, layer: 'content', summary: 'Source-backed design spec that defines facts, constraints, scope, and success criteria.', details: ['Separates ready-now capability from design recommendation.', 'Defines demo topology and hard product boundaries.'] },
+      { id: 'deck', label: 'customer deck', subtitle: 'content/vault-spiffe-customer-deck.md', x: 830, y: 52, w: 280, h: 72, layer: 'content', summary: 'Markdown manuscript for the customer story, speaker notes, and demo framing.', details: ['Moves from WHO versus WHAT into demo proof.', 'Carries appendix material for SCIM and SAML.'] },
+      { id: 'demo-readme', label: 'demo/README.md', subtitle: 'operator runbook', x: 1180, y: 52, w: 220, h: 72, layer: 'content', summary: 'Presenter-oriented guide for bootstrapping the lab and walking through demo checkpoints.', details: ['Documents the one-cluster topology.', 'Explains grouped bootstrap review and scenario commands.'] },
+
+      { id: 'compose', label: 'docker-compose.yml', subtitle: 'service topology', x: 120, y: 214, w: 230, h: 72, layer: 'orchestration', summary: 'Defines hashibank-vault, postgres-hashibank, demo-tools, and the two reveal apps.', details: ['Mounts the Enterprise license and runtime directories.', 'Builds demo-tools with the Vault CLI available.'] },
+      { id: 'bootstrap', label: 'bootstrap.sh', subtitle: 'Vault init + config', x: 450, y: 214, w: 220, h: 72, layer: 'orchestration', summary: 'Generates TLS assets, initializes Vault, configures auth, PKI, SPIFFE, policies, and demo data.', details: ['Creates AppRole roles with alias metadata.', 'Configures SPIFFE auth for both X.509 and JWT flows.', 'Writes grouped bootstrap review output for live demos.'] },
+      { id: 'policies', label: 'demo/policies/', subtitle: 'issuer + access policies', x: 760, y: 214, w: 200, h: 72, layer: 'orchestration', summary: 'Policy files loaded during bootstrap to separate issuer-side identity from access-side business outcomes.', details: ['Includes payments issuer and fraud access policy design.', 'Supports mapping from workload identity to allowed actions.'] },
+
+      { id: 'common', label: 'lib/common.sh', subtitle: 'shared shell helpers', x: 60, y: 390, w: 200, h: 72, layer: 'shell', summary: 'Provides compose wrappers, wait helpers, and presenter-facing command output formatting.', details: ['Normalizes compose execution against the local lab.', 'Handles grouped output and interactive pauses for the review flow.'] },
+      { id: 'x509-shell', label: 'demo-x509-payments.sh', subtitle: 'payments wrapper', x: 320, y: 390, w: 210, h: 72, layer: 'shell', summary: 'Thin shell entrypoint that runs the payments X.509 scenario inside demo-tools.', details: ['Validates allowed actions.', 'Delegates actual scenario logic to the Python runner.'] },
+      { id: 'fraud-shell', label: 'demo-jwt-fraud.sh', subtitle: 'fraud wrapper', x: 590, y: 390, w: 210, h: 72, layer: 'shell', summary: 'Thin shell entrypoint for the fraud JWT flow plus the fraud reveal app startup.', details: ['Brings up the fraud web app when needed.', 'Checks health before the final reveal.'] },
+      { id: 'assistant-shell', label: 'demo-agentic-oidc.sh', subtitle: 'assistant wrapper', x: 860, y: 390, w: 230, h: 72, layer: 'shell', summary: 'Thin shell entrypoint for the assistant OIDC flow plus the assistant reveal app startup.', details: ['Starts hashibank-assistant when needed.', 'Delegates validation logic to the Python runner.'] },
+
+      { id: 'payments-py', label: 'payments_x509_demo.py', subtitle: 'payments scenario', x: 160, y: 572, w: 220, h: 72, layer: 'python', summary: 'Implements the AppRole login, PKI issue, SPIFFE X.509 login, and KV read checkpoints.', details: ['Shows raw Vault CLI output and PEM inspection.', 'Uses the Python helper layer for structured state capture.'] },
+      { id: 'fraud-py', label: 'fraud_jwt_demo.py', subtitle: 'fraud scenario', x: 450, y: 572, w: 220, h: 72, layer: 'python', summary: 'Implements AppRole login, JWT-SVID minting, SPIFFE JWT auth, dynamic DB creds, and reveal prep.', details: ['Prints decoded JWT claims for the live demo.', 'Persists reveal state for the fraud web UI.'] },
+      { id: 'assistant-py', label: 'assistant_oidc_demo.py', subtitle: 'assistant scenario', x: 740, y: 572, w: 220, h: 72, layer: 'python', summary: 'Implements AppRole login, JWT minting, discovery lookup, JWKS validation, and reveal prep.', details: ['Demonstrates OIDC-style validation outside Vault-native auth.', 'Prepares masked banker context for the assistant web app.'] },
+      { id: 'transcript', label: 'transcript.py', subtitle: 'visible command layer', x: 1060, y: 540, w: 200, h: 72, layer: 'python', summary: 'Presenter-facing output helper that prints the actual command and raw response to the terminal.', details: ['Separates hidden environment setup from visible command output.', 'Keeps the demo grounded in the real Vault CLI flow.'] },
+      { id: 'vault-client', label: 'vault_client.py', subtitle: 'narrow HTTPS client', x: 1310, y: 540, w: 210, h: 72, layer: 'python', summary: 'Small Python client for Vault API calls, JWT decoding/validation, and certificate inspection.', details: ['Uses TLS-verified requests with explicit failures.', 'Provides helper functions for login, minting, reads, and token validation.'] },
+      { id: 'checkpoints', label: 'checkpoints.py', subtitle: 'scenario state', x: 1185, y: 660, w: 210, h: 72, layer: 'python', summary: 'Persists checkpoint state and prepared payloads under demo/runtime/checkpoints.', details: ['Controls step ordering and invalidation.', 'Builds stable state for the reveal apps.'] },
+
+      { id: 'fraud-web', label: 'hashibank-fraud-web/app.py', subtitle: 'fraud reveal app', x: 320, y: 744, w: 250, h: 72, layer: 'web', summary: 'Reads prepared checkpoint state and renders the fraud analyst page without rerunning Vault login or SQL.', details: ['Used only after the backend proof is complete.', 'Turns short-lived DB access into a visible business outcome.'] },
+      { id: 'assistant-web', label: 'hashibank-assistant/app.py', subtitle: 'assistant reveal app', x: 680, y: 744, w: 250, h: 72, layer: 'web', summary: 'Reads prepared assistant state and renders masked banker context after JWT validation succeeds.', details: ['Represents the downstream relying service.', 'Shows the external validation outcome in a simple UI.'] }
+    ];
+
+    const connections = [
+      { from: 'requirements', to: 'spec', type: 'docs' },
+      { from: 'spec', to: 'deck', type: 'docs' },
+      { from: 'readme', to: 'spec', type: 'docs' },
+      { from: 'readme', to: 'deck', type: 'docs' },
+      { from: 'readme', to: 'demo-readme', type: 'docs' },
+      { from: 'deck', to: 'demo-readme', type: 'docs' },
+
+      { from: 'compose', to: 'bootstrap', type: 'config' },
+      { from: 'bootstrap', to: 'policies', type: 'config' },
+      { from: 'compose', to: 'fraud-web', type: 'config' },
+      { from: 'compose', to: 'assistant-web', type: 'config' },
+      { from: 'bootstrap', to: 'x509-shell', type: 'config' },
+      { from: 'bootstrap', to: 'fraud-shell', type: 'config' },
+      { from: 'bootstrap', to: 'assistant-shell', type: 'config' },
+
+      { from: 'common', to: 'bootstrap', type: 'shell' },
+      { from: 'common', to: 'x509-shell', type: 'shell' },
+      { from: 'common', to: 'fraud-shell', type: 'shell' },
+      { from: 'common', to: 'assistant-shell', type: 'shell' },
+      { from: 'x509-shell', to: 'payments-py', type: 'shell' },
+      { from: 'fraud-shell', to: 'fraud-py', type: 'shell' },
+      { from: 'assistant-shell', to: 'assistant-py', type: 'shell' },
+
+      { from: 'payments-py', to: 'transcript', type: 'runtime' },
+      { from: 'payments-py', to: 'vault-client', type: 'runtime' },
+      { from: 'payments-py', to: 'checkpoints', type: 'runtime' },
+      { from: 'fraud-py', to: 'transcript', type: 'runtime' },
+      { from: 'fraud-py', to: 'vault-client', type: 'runtime' },
+      { from: 'fraud-py', to: 'checkpoints', type: 'runtime' },
+      { from: 'assistant-py', to: 'transcript', type: 'runtime' },
+      { from: 'assistant-py', to: 'vault-client', type: 'runtime' },
+      { from: 'assistant-py', to: 'checkpoints', type: 'runtime' },
+
+      { from: 'fraud-py', to: 'fraud-web', type: 'ui' },
+      { from: 'assistant-py', to: 'assistant-web', type: 'ui' }
+    ];
+
+    const PRESETS = {
+      full: {
+        label: 'Full System',
+        state: {
+          layers: { content: true, orchestration: true, shell: true, python: true, web: true },
+          connections: { docs: true, config: true, shell: true, runtime: true, ui: true },
+          zoom: 1,
+          selectedNodeId: 'bootstrap'
+        }
+      },
+      narrative: {
+        label: 'Narrative Flow',
+        state: {
+          layers: { content: true, orchestration: true, shell: false, python: false, web: false },
+          connections: { docs: true, config: true, shell: false, runtime: false, ui: false },
+          zoom: 1,
+          selectedNodeId: 'deck'
+        }
+      },
+      runtime: {
+        label: 'Demo Runtime',
+        state: {
+          layers: { content: false, orchestration: true, shell: true, python: true, web: true },
+          connections: { docs: false, config: true, shell: true, runtime: true, ui: true },
+          zoom: 1,
+          selectedNodeId: 'fraud-py'
+        }
+      },
+      identity: {
+        label: 'Identity Path',
+        state: {
+          layers: { content: false, orchestration: true, shell: true, python: true, web: false },
+          connections: { docs: false, config: true, shell: true, runtime: true, ui: false },
+          zoom: 1.08,
+          selectedNodeId: 'vault-client'
+        }
+      },
+      ui: {
+        label: 'Reveal Apps',
+        state: {
+          layers: { content: false, orchestration: true, shell: true, python: true, web: true },
+          connections: { docs: false, config: true, shell: true, runtime: false, ui: true },
+          zoom: 1.04,
+          selectedNodeId: 'fraud-web'
+        }
+      }
+    };
+
+    const DEFAULT_STATE = {
+      layers: { content: true, orchestration: true, shell: true, python: true, web: true },
+      connections: { docs: true, config: true, shell: true, runtime: true, ui: true },
+      comments: [],
+      zoom: 1,
+      selectedNodeId: 'bootstrap',
+      preset: 'full',
+      pendingCommentNodeId: null
+    };
+
+    const state = structuredClone(DEFAULT_STATE);
+
+    const els = {
+      presetGrid: document.getElementById('presetGrid'),
+      layerToggles: document.getElementById('layerToggles'),
+      connectionToggles: document.getElementById('connectionToggles'),
+      selectedCard: document.getElementById('selectedCard'),
+      commentList: document.getElementById('commentList'),
+      scopeChip: document.getElementById('scopeChip'),
+      diagram: document.getElementById('diagram'),
+      legend: document.getElementById('legend'),
+      promptBox: document.getElementById('promptBox'),
+      copyPrompt: document.getElementById('copyPrompt'),
+      copyStatus: document.getElementById('copyStatus'),
+      zoomIn: document.getElementById('zoomIn'),
+      zoomOut: document.getElementById('zoomOut'),
+      zoomReset: document.getElementById('zoomReset'),
+      modalBackdrop: document.getElementById('modalBackdrop'),
+      modalTitle: document.getElementById('modalTitle'),
+      modalPath: document.getElementById('modalPath'),
+      commentInput: document.getElementById('commentInput'),
+      cancelComment: document.getElementById('cancelComment'),
+      saveComment: document.getElementById('saveComment')
+    };
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function visibleNodes() {
+      return nodes.filter((node) => state.layers[node.layer]);
+    }
+
+    function visibleConnections() {
+      const visibleNodeIds = new Set(visibleNodes().map((node) => node.id));
+      return connections.filter((connection) => state.connections[connection.type] && visibleNodeIds.has(connection.from) && visibleNodeIds.has(connection.to));
+    }
+
+    function getNode(nodeId) {
+      return nodes.find((node) => node.id === nodeId);
+    }
+
+    function getCommentCount(nodeId) {
+      return state.comments.filter((comment) => comment.target === nodeId).length;
+    }
+
+    function wrapText(text, maxChars) {
+      const words = text.split(' ');
+      const lines = [];
+      let current = '';
+      for (const word of words) {
+        const next = current ? `${current} ${word}` : word;
+        if (next.length > maxChars && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = next;
+        }
+      }
+      if (current) lines.push(current);
+      return lines;
+    }
+
+    function connectionPath(from, to) {
+      const startX = from.x + from.w;
+      const startY = from.y + from.h / 2;
+      const endX = to.x;
+      const endY = to.y + to.h / 2;
+      const delta = Math.max(80, Math.abs(endX - startX) * 0.35);
+      return `M ${startX} ${startY} C ${startX + delta} ${startY}, ${endX - delta} ${endY}, ${endX} ${endY}`;
+    }
+
+    function markerDefs() {
+      return `
+        <defs>
+          ${Object.entries(connectionMeta).map(([key, meta]) => `
+            <marker id="arrow-${key}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="${meta.color}"></polygon>
+            </marker>
+          `).join('')}
+        </defs>
+      `;
+    }
+
+    function layerBands() {
+      const order = ['content', 'orchestration', 'shell', 'python', 'web'];
+      return order.filter((layer) => state.layers[layer]).map((layer) => {
+        const y = {
+          content: 26,
+          orchestration: 186,
+          shell: 362,
+          python: 518,
+          web: 706
+        }[layer];
+        return `
+          <g>
+            <rect x="16" y="${y}" width="1568" height="118" rx="18" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.04)"></rect>
+            <text x="42" y="${y + 24}" fill="${layerMeta[layer].color}" font-family="${'Avenir Next, Segoe UI, Trebuchet MS, sans-serif'}" font-size="12" letter-spacing="2" text-transform="uppercase">${layerMeta[layer].label.toUpperCase()}</text>
+          </g>
+        `;
+      }).join('');
+    }
+
+    function renderDiagram() {
+      const svg = els.diagram;
+      const visible = visibleNodes();
+      const connectionItems = visibleConnections();
+
+      svg.style.transform = `scale(${state.zoom})`;
+      svg.innerHTML = `
+        ${markerDefs()}
+        ${layerBands()}
+        <g>
+          ${connectionItems.map((connection) => {
+            const from = getNode(connection.from);
+            const to = getNode(connection.to);
+            const meta = connectionMeta[connection.type];
+            return `<path d="${connectionPath(from, to)}" fill="none" stroke="${meta.color}" stroke-width="3" stroke-dasharray="${meta.dash}" marker-end="url(#arrow-${connection.type})" opacity="0.82"></path>`;
+          }).join('')}
+        </g>
+        <g>
+          ${visible.map((node) => {
+            const lines = wrapText(node.label, 22);
+            const summary = wrapText(node.subtitle, 28);
+            const selected = state.selectedNodeId === node.id;
+            const commentCount = getCommentCount(node.id);
+            const layerColor = layerMeta[node.layer].color;
+            return `
+              <g class="node" data-node-id="${node.id}" style="cursor:pointer">
+                <rect x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" rx="18"
+                  fill="${selected ? 'rgba(127,216,214,0.16)' : 'rgba(12,21,32,0.92)'}"
+                  stroke="${commentCount ? '#ddb277' : selected ? '#7fd8d6' : 'rgba(255,255,255,0.08)'}"
+                  stroke-width="${commentCount || selected ? 2 : 1.2}"></rect>
+                <rect x="${node.x + 10}" y="${node.y + 10}" width="${node.w - 20}" height="6" rx="6" fill="${layerColor}" opacity="0.95"></rect>
+                ${lines.map((line, index) => `
+                  <text x="${node.x + 14}" y="${node.y + 30 + (index * 16)}" fill="#eff4f3" font-size="13" font-weight="700" font-family="${'Avenir Next, Segoe UI, Trebuchet MS, sans-serif'}">${escapeHtml(line)}</text>
+                `).join('')}
+                ${summary.slice(0, 2).map((line, index) => `
+                  <text x="${node.x + 14}" y="${node.y + 56 + (index * 13)}" fill="#aebdc0" font-size="11" font-family="${'Avenir Next, Segoe UI, Trebuchet MS, sans-serif'}">${escapeHtml(line)}</text>
+                `).join('')}
+                ${commentCount ? `<circle cx="${node.x + node.w - 18}" cy="${node.y + 18}" r="10" fill="#ddb277"></circle><text x="${node.x + node.w - 21.5}" y="${node.y + 22.5}" fill="#071018" font-size="10" font-weight="700">${commentCount}</text>` : ''}
+              </g>
+            `;
+          }).join('')}
+        </g>
+      `;
+
+      svg.querySelectorAll('.node').forEach((el) => {
+        el.addEventListener('click', () => {
+          const nodeId = el.getAttribute('data-node-id');
+          state.selectedNodeId = nodeId;
+          state.pendingCommentNodeId = nodeId;
+          openCommentModal(nodeId);
+          updateAll();
+        });
+      });
+    }
+
+    function renderLegend() {
+      els.legend.innerHTML = Object.entries(connectionMeta)
+        .filter(([type]) => state.connections[type])
+        .map(([, meta]) => `
+          <div class="legend-item">
+            <span class="legend-line" style="border-top-color:${meta.color}; border-top-style:${meta.dash ? 'dashed' : 'solid'}"></span>
+            <small>${escapeHtml(meta.label)}</small>
+          </div>
+        `).join('');
+    }
+
+    function renderPresets() {
+      els.presetGrid.innerHTML = Object.entries(PRESETS).map(([key, preset]) => `
+        <button class="preset ${state.preset === key ? 'active' : ''}" type="button" data-preset="${key}">
+          ${escapeHtml(preset.label)}
+        </button>
+      `).join('');
+    }
+
+    function renderLayerToggles() {
+      els.layerToggles.innerHTML = Object.entries(layerMeta).map(([layer, meta]) => `
+        <div class="toggle">
+          <label>
+            <span>${escapeHtml(meta.label)}</span>
+            <input type="checkbox" data-layer="${layer}" ${state.layers[layer] ? 'checked' : ''}>
+          </label>
+        </div>
+      `).join('');
+    }
+
+    function renderConnectionToggles() {
+      els.connectionToggles.innerHTML = Object.entries(connectionMeta).map(([type, meta]) => `
+        <div class="toggle">
+          <label>
+            <span>${escapeHtml(meta.label)}</span>
+            <input type="checkbox" data-connection="${type}" ${state.connections[type] ? 'checked' : ''}>
+          </label>
+        </div>
+      `).join('');
+    }
+
+    function renderSelected() {
+      const node = getNode(state.selectedNodeId) || nodes[0];
+      els.selectedCard.innerHTML = `
+        <h3>${escapeHtml(node.label)}</h3>
+        <div class="detail-path">${escapeHtml(node.subtitle)}</div>
+        <p class="detail-list">${escapeHtml(node.summary)}</p>
+        <ul class="detail-list">
+          ${node.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join('')}
+        </ul>
+      `;
+    }
+
+    function renderComments() {
+      if (!state.comments.length) {
+        els.commentList.innerHTML = '<div class="muted">No component comments yet. Click a node to add one.</div>';
+        return;
+      }
+
+      els.commentList.innerHTML = state.comments.map((comment) => `
+        <article class="comment-card">
+          <h3>${escapeHtml(comment.targetLabel)}</h3>
+          <div class="comment-path">${escapeHtml(comment.targetFile)}</div>
+          <p>${escapeHtml(comment.text)}</p>
+          <button class="comment-delete" type="button" data-delete-comment="${comment.id}">Delete comment</button>
+        </article>
+      `).join('');
+    }
+
+    function scopeSummary() {
+      const visibleLayerLabels = Object.entries(layerMeta).filter(([key]) => state.layers[key]).map(([, meta]) => meta.label.toLowerCase());
+      return visibleLayerLabels.length === Object.keys(layerMeta).length
+        ? 'full repository system'
+        : visibleLayerLabels.join(', ');
+    }
+
+    function updatePrompt() {
+      const visibleLayerLabels = Object.entries(layerMeta).filter(([key]) => state.layers[key]).map(([, meta]) => meta.label.toLowerCase());
+      const visibleConnectionLabels = Object.entries(connectionMeta).filter(([key]) => state.connections[key]).map(([, meta]) => meta.label.toLowerCase());
+      const selected = getNode(state.selectedNodeId) || nodes[0];
+
+      const intro = visibleLayerLabels.length === Object.keys(layerMeta).length
+        ? 'Review the full vault-spiffe repository architecture.'
+        : `Review the vault-spiffe architecture focusing on ${visibleLayerLabels.join(', ')}.`;
+
+      const transport = visibleConnectionLabels.length === Object.keys(connectionMeta).length
+        ? 'Keep the full relationship map visible.'
+        : `Emphasize ${visibleConnectionLabels.join(', ')} relationships.`;
+
+      const selectedLine = `The currently selected component is ${selected.label} (${selected.subtitle}).`;
+
+      const commentLines = state.comments.length
+        ? '\n\nFeedback on specific components:\n\n' + state.comments.map((comment) =>
+            `**${comment.targetLabel}** (${comment.targetFile}):\n${comment.text}`
+          ).join('\n\n')
+        : '';
+
+      els.promptBox.textContent = `${intro} ${transport} ${selectedLine}${commentLines}`;
+      els.scopeChip.textContent = `Scope: ${scopeSummary()}`;
+    }
+
+    function updateAll() {
+      renderPresets();
+      renderLayerToggles();
+      renderConnectionToggles();
+      renderSelected();
+      renderComments();
+      renderDiagram();
+      renderLegend();
+      updatePrompt();
+    }
+
+    function applyPreset(key) {
+      const preset = PRESETS[key];
+      if (!preset) return;
+      state.layers = structuredClone(preset.state.layers);
+      state.connections = structuredClone(preset.state.connections);
+      state.zoom = preset.state.zoom;
+      state.selectedNodeId = preset.state.selectedNodeId;
+      state.preset = key;
+      updateAll();
+    }
+
+    function openCommentModal(nodeId) {
+      const node = getNode(nodeId);
+      if (!node) return;
+      els.modalTitle.textContent = node.label;
+      els.modalPath.textContent = node.subtitle;
+      els.commentInput.value = '';
+      els.modalBackdrop.classList.add('open');
+      els.commentInput.focus();
+    }
+
+    function closeCommentModal() {
+      els.modalBackdrop.classList.remove('open');
+      state.pendingCommentNodeId = null;
+    }
+
+    els.presetGrid.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-preset]');
+      if (!button) return;
+      applyPreset(button.getAttribute('data-preset'));
+    });
+
+    els.layerToggles.addEventListener('change', (event) => {
+      const input = event.target.closest('[data-layer]');
+      if (!input) return;
+      state.layers[input.getAttribute('data-layer')] = input.checked;
+      state.preset = 'custom';
+      updateAll();
+    });
+
+    els.connectionToggles.addEventListener('change', (event) => {
+      const input = event.target.closest('[data-connection]');
+      if (!input) return;
+      state.connections[input.getAttribute('data-connection')] = input.checked;
+      state.preset = 'custom';
+      updateAll();
+    });
+
+    els.commentList.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-delete-comment]');
+      if (!button) return;
+      const id = Number(button.getAttribute('data-delete-comment'));
+      state.comments = state.comments.filter((comment) => comment.id !== id);
+      updateAll();
+    });
+
+    els.zoomIn.addEventListener('click', () => {
+      state.zoom = Math.min(1.6, Number((state.zoom + 0.08).toFixed(2)));
+      updateAll();
+    });
+
+    els.zoomOut.addEventListener('click', () => {
+      state.zoom = Math.max(0.72, Number((state.zoom - 0.08).toFixed(2)));
+      updateAll();
+    });
+
+    els.zoomReset.addEventListener('click', () => {
+      state.zoom = 1;
+      updateAll();
+    });
+
+    els.cancelComment.addEventListener('click', closeCommentModal);
+    els.modalBackdrop.addEventListener('click', (event) => {
+      if (event.target === els.modalBackdrop) closeCommentModal();
+    });
+
+    els.saveComment.addEventListener('click', () => {
+      const text = els.commentInput.value.trim();
+      const node = getNode(state.pendingCommentNodeId);
+      if (!text || !node) {
+        closeCommentModal();
+        return;
+      }
+      state.comments.push({
+        id: Date.now(),
+        target: node.id,
+        targetLabel: node.label,
+        targetFile: node.subtitle,
+        text
+      });
+      closeCommentModal();
+      updateAll();
+    });
+
+    els.copyPrompt.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(els.promptBox.textContent);
+        els.copyStatus.textContent = 'Copied!';
+        setTimeout(() => { els.copyStatus.textContent = ''; }, 1400);
+      } catch (error) {
+        els.copyStatus.textContent = 'Copy failed.';
+      }
+    });
+
+    applyPreset('full');
+  </script>
+</body>
+</html>
