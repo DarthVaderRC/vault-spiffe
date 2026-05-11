@@ -4,7 +4,6 @@ __pycache__/
 .DS_Store
 license.hclic
 content/*
-!content/vault-spiffe-article.md
 requirements.md
 spec.md
 playgrounds/customer-deck-presentation.html
