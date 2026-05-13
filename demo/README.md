@@ -94,10 +94,10 @@ To review the setup before the live scenarios, run:
 ./scripts/bootstrap.sh review
 ```
 
-The review output is split into logical groups, pauses between sections for a keypress, and shows Vault CLI output for:
+The review output is split into logical sections, pauses between sections until you press `n`, and shows Vault CLI output for:
 
-- AppRole definitions and alias metadata
 - policies
+- AppRole definitions and alias metadata
 - PKI role configuration
 - SPIFFE engine configuration and SPIFFE roles
 - SPIFFE auth configuration and SPIFFE auth roles
@@ -107,27 +107,23 @@ The review output is split into logical groups, pauses between sections for a ke
 
 Each demo script supports:
 
-- `all` or no argument: rerun the full scenario
-- `status`: show current checkpoint status and next step
+- no argument: run the full scenario with pauses at each checkpoint
+- `status`: show current checkpoint status
 - `reset`: clear the saved checkpoint state
 
-Every checkpoint now prints:
+Each scenario script runs the checkpoints in order and pauses between them until you press `n`, so you can narrate before continuing. Every checkpoint prints:
 
 - the actual Vault CLI or local inspection command being run
 - the raw response or file content
 - decoded JWT claims where relevant
-- short operator highlights for the live demo
 
 ### Payments API X.509
 
 ```bash
-./scripts/demo-x509-payments.sh approle-login
-./scripts/demo-x509-payments.sh pki-issue
-./scripts/demo-x509-payments.sh spiffe-x509-auth
-./scripts/demo-x509-payments.sh payments-api-kv-secrets
+./scripts/demo-x509-payments.sh
 ```
 
-This flow shows:
+This flow runs through AppRole login, PKI issuance, SPIFFE X.509 auth, and the KV read, pausing between checkpoints. It shows:
 
 - the AppRole login response with `client_token` and metadata
 - the PKI role definition and certificate issuance response
@@ -138,14 +134,10 @@ This flow shows:
 ### Fraud Ops JWT + database credentials
 
 ```bash
-./scripts/demo-jwt-fraud.sh approle-login
-./scripts/demo-jwt-fraud.sh mint-jwt
-./scripts/demo-jwt-fraud.sh spiffe-jwt-auth
-./scripts/demo-jwt-fraud.sh db-creds
-./scripts/demo-jwt-fraud.sh final-reveal
+./scripts/demo-jwt-fraud.sh
 ```
 
-This flow shows:
+This flow runs through AppRole login, JWT minting, SPIFFE JWT auth, database credential retrieval, and the final page reveal, pausing between checkpoints. It shows:
 
 - AppRole alias metadata
 - the raw minted JWT-SVID
@@ -164,14 +156,10 @@ The page renders from prepared checkpoint state and does not rerun Vault login o
 ### Relationship assistant OIDC validation
 
 ```bash
-./scripts/demo-agentic-oidc.sh approle-login
-./scripts/demo-agentic-oidc.sh mint-jwt
-./scripts/demo-agentic-oidc.sh fetch-discovery
-./scripts/demo-agentic-oidc.sh validate-jwt
-./scripts/demo-agentic-oidc.sh final-reveal
+./scripts/demo-agentic-oidc.sh
 ```
 
-This flow shows:
+This flow runs through AppRole login, JWT minting, discovery/JWKS retrieval, JWT validation, and the final page reveal, pausing between checkpoints. It shows:
 
 - AppRole alias metadata
 - the raw minted JWT-SVID

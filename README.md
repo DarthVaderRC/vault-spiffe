@@ -5,12 +5,12 @@ A runnable local HashiBank demo for showing how **HashiCorp Vault** fits into a 
 This repository combines:
 
 - a source-backed design spec
-- a Docker Compose demo built on a single **HashiBank Vault Cluster**
-- interactive HTML artifacts for exploring the deck and the repository architecture
+- a Docker Compose demo built on a single **HashiBank Vault Enterprise Cluster**
+- an interactive HTML artifact for exploring the repository architecture
 
 ## What this repository covers
 
-The repo is centered on three proof flows:
+The repo is centered on three scenarios:
 
 1. **Payments API X.509**
    - AppRole login
@@ -33,11 +33,9 @@ The repo is centered on three proof flows:
 | --- | --- |
 | `requirements.md` | Original business context and customer ask |
 | `spec.md` | Spec-driven design for the customer content and runnable demo |
-| `content/vault-spiffe-customer-deck.md` | Customer deck manuscript in markdown |
 | `demo/README.md` | Presenter-oriented demo setup and operator runbook |
 | `demo/DEMO_WALKTHROUGH.md` | Live-demo talk track and highlight cues |
 | `demo/` | Docker Compose lab, bootstrap scripts, Python scenario runners, and web apps |
-| `playgrounds/customer-deck-presentation.html` | Interactive deck explorer built from the customer deck manuscript |
 | `playgrounds/repo-code-explorer.html` | Interactive code-map explorer for the repository architecture |
 
 ## Quick start
@@ -45,7 +43,7 @@ The repo is centered on three proof flows:
 ### Prerequisites
 
 - Docker Desktop or Docker Engine with Compose v2
-- a Vault Enterprise license file at `license.hclic`
+- a Vault Enterprise license file at `license.hclic` in the root
 
 ### Bootstrap the demo
 
@@ -68,14 +66,6 @@ Review the configured environment before running the scenarios:
 ./scripts/demo-agentic-oidc.sh
 ```
 
-Or run step-by-step checkpoints:
-
-```bash
-./scripts/demo-x509-payments.sh approle-login
-./scripts/demo-jwt-fraud.sh mint-jwt
-./scripts/demo-agentic-oidc.sh validate-jwt
-```
-
 ### Tear down
 
 ```bash
@@ -84,22 +74,20 @@ Or run step-by-step checkpoints:
 
 ## Interactive artifacts
 
-Open the generated HTML tools locally:
+Open the generated HTML tool locally:
 
 ```bash
-open playgrounds/customer-deck-presentation.html
 open playgrounds/repo-code-explorer.html
 ```
 
 ## Important implementation notes
 
-- The demo uses **one Vault cluster**: `hashibank-vault`.
+- The demo uses **one Vault enterprise cluster**: `hashibank-vault`.
 - The X.509 flow uses **Vault PKI with SPIFFE URI SANs**; it does **not** claim native X.509 SVID issuance from the SPIFFE secrets engine.
 - The JWT flows use the **SPIFFE secrets engine** for JWT-SVID minting and **SPIFFE auth** for login.
 - SCIM and SAML are covered in the customer deck as **adjacent identity topics**, not as the main runnable demo path.
 
 ## Where to start reading
 
-- Start with `spec.md` if you want the design rationale.
-- Start with `content/vault-spiffe-customer-deck.md` if you want the customer-facing narrative.
 - Start with `demo/README.md` if you want to run the lab.
+- Start with `demo/DEMO_WALKTHROUGH.md` if you want to run through the demo with a talk track.

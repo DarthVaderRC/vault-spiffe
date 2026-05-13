@@ -2,13 +2,7 @@
 
 Use this guide during the live HashiBank Vault + SPIFFE demo. It gives you the operator steps, the banking use case, and the field-level highlights to call out while the commands run.
 
-## Demo goal
-
-Use the three scenarios to make one architectural point:
-
-- Vault acts as the trust, identity-context, and policy control plane.
-- SPIFFE IDs act as the portable workload identifier layer.
-- Short-lived identity should lead to a real banking outcome, not stop at authentication.
+### `Remember to follow "Tell-Show-Tell" style`
 
 ## Recommended setup
 
@@ -20,7 +14,7 @@ Use the three scenarios to make one architectural point:
    ./scripts/bootstrap.sh
    ```
 
-2. Keep one terminal open in `demo/` for the presenter commands.
+2. Keep one terminal open in `demo/` for commands.
 3. Keep two browser tabs ready:
    - `http://localhost:18081/`
    - `http://localhost:18082/`
@@ -30,16 +24,16 @@ Use the three scenarios to make one architectural point:
    ./scripts/bootstrap.sh review
    ```
 
-   The review is split into seven logical groups and pauses after each section so you can control the pace in the room.
+   The review is split into logical sections and pauses after each one.
 
-   Use this review output to show:
+   Review output shows:
 
-   - the policies being written
-   - the AppRole definitions and alias metadata
-   - the PKI role for payments certificates
-   - the SPIFFE engine configuration and role definitions
-   - the SPIFFE auth configuration and role definitions
-   - the payments API KV secrets path
+   - policies being written
+   - AppRole definitions and alias metadata
+   - PKI role for payments certificates
+   - SPIFFE engine configuration and role definitions
+   - SPIFFE auth configuration and role definitions
+   - payments API KV secrets path
 
 ## Suggested demo order
 
@@ -55,51 +49,37 @@ Use this before the first scenario:
 
 - "This demo runs on one HashiBank Vault Cluster."
 - "The same cluster issues identity material, validates SPIFFE identity, and maps that identity to policy."
-- "The trust domain is `hashibank.demo`, and each workload gets a banking-relevant SPIFFE ID."
-- "The point is not token plumbing. The point is how workload identity turns into tightly scoped banking access."
+- "The trust domain is `hashibank.demo`, and each workload gets a SPIFFE ID."
 
 ## Scenario 1: Payments API X.509 SPIFFE auth
 
 ### Business context
 
-HashiBank runs an internal payments API that moves money between banking systems. The bank wants a standards-based machine identity instead of a long-lived Vault token or a certificate reused by multiple services.
+HashiBank runs an internal payments API that moves money between banking systems. The bank wants a standards-based machine identity instead of long-lived credentials or a certificate reused by multiple services.
 
-### Operator steps
+### Steps
 
-1. Run the checkpoints in order:
+1. Run the scenario script:
 
    ```bash
-   ./scripts/demo-x509-payments.sh approle-login
-   ./scripts/demo-x509-payments.sh pki-issue
-   ./scripts/demo-x509-payments.sh spiffe-x509-auth
-   ./scripts/demo-x509-payments.sh payments-api-kv-secrets
+   ./scripts/demo-x509-payments.sh
    ```
+2. Key call outs:
+   - AppRole:
+      - AppRole role definition
+      - `auth.alias_metadata`
+      - `auth.token_policies`
+   - PKI issue:
+      - PKI role definition
+      - `openssl x509 -text` output showing URI SAN value
+         ```text
+         spiffe://hashibank.demo/payments/api
+         ```
+   - SPIFFE X.509 auth:
+      - SPIFFE X.509 auth role definition
+      - policy mapping result
 
-2. In `approle-login`, call out:
-   - the AppRole role definition
-   - the raw login response
-   - `auth.client_token`
-   - `auth.metadata.role_name`
-
-3. In `pki-issue`, call out:
-   - the PKI role definition
-   - the raw certificate issuance response
-   - the raw `payments-api.crt`
-   - the `openssl x509 -text` output
-   - the URI SAN value:
-
-   ```text
-   spiffe://hashibank.demo/payments/api
-   ```
-
-4. In `spiffe-x509-auth`, call out:
-   - the SPIFFE X.509 auth role definition
-   - the raw login response
-   - the policy mapping result
-
-5. In `payments-api-kv-secrets`, call out:
-   - the raw Vault read response
-   - the fact that the KV secrets are unlocked only after the SPIFFE-authenticated login
+   - Final KV read secrets
 
 ### Suggested talk track
 
@@ -120,46 +100,38 @@ HashiBank runs an internal payments API that moves money between banking systems
 
 HashiBank runs a fraud operations dashboard that needs to read flagged transaction data. The bank does not want the application to keep a static database password. It wants a short-lived workload identity to become short-lived database access.
 
-### Operator steps
+### Steps
 
-1. Run the checkpoints in order:
+1. Run the scenario script:
 
    ```bash
-   ./scripts/demo-jwt-fraud.sh approle-login
-   ./scripts/demo-jwt-fraud.sh mint-jwt
-   ./scripts/demo-jwt-fraud.sh spiffe-jwt-auth
-   ./scripts/demo-jwt-fraud.sh db-creds
-   ./scripts/demo-jwt-fraud.sh final-reveal
+   ./scripts/demo-jwt-fraud.sh
    ```
 
-2. In `approle-login`, call out:
-   - the AppRole alias metadata
-   - the raw login response
-
-3. In `mint-jwt`, call out:
-   - the SPIFFE role definition
-   - the raw mint response
-   - the raw JWT-SVID
-   - the `sub` value:
-
-   ```text
-   spiffe://hashibank.demo/fraud/ops-web
-   ```
-
-4. In `spiffe-jwt-auth`, call out:
-   - the SPIFFE JWT auth role definition
-   - the raw login response
-   - the policies in the returned auth block
-
-5. In `db-creds`, call out:
-   - the raw database credentials response
-   - `db_username`
-   - `lease_id`
-   - `lease_duration`
-
-6. In `final-reveal`, call out:
-   - the SQL-backed result set
-   - then refresh `http://localhost:18081/`
+2. Key call outs:
+   - AppRole:
+      - AppRole role definition
+      - `auth.alias_metadata`
+      - `auth.token_policies`
+   - JWT mint:
+      - SPIFFE role definition
+      - decoded JWT claims
+      - `sub`
+         ```text
+         spiffe://hashibank.demo/fraud/ops-web
+         ```
+      - `vault.entity.id`
+   - SPIFFE JWT auth:
+      - SPIFFE JWT auth role definition
+      - `auth.display_name`
+      - policy mapping result
+   - Dynamic DB credentials:
+      - `db_username`
+      - `lease_id`
+      - `lease_duration`
+   - Final reveal:
+      - SQL-backed result set
+      - refresh `http://localhost:18081/`
 
 ### Suggested talk track
 
@@ -180,43 +152,39 @@ HashiBank runs a fraud operations dashboard that needs to read flagged transacti
 
 HashiBank wants an internal banker assistant that can carry portable workload identity across system boundaries. The assistant service should be able to validate the workload JWT through discovery and JWKS without depending on Vault-native auth semantics.
 
-### Operator steps
+### Steps
 
-1. Run the checkpoints in order:
+1. Run the scenario script:
 
    ```bash
-   ./scripts/demo-agentic-oidc.sh approle-login
-   ./scripts/demo-agentic-oidc.sh mint-jwt
-   ./scripts/demo-agentic-oidc.sh fetch-discovery
-   ./scripts/demo-agentic-oidc.sh validate-jwt
-   ./scripts/demo-agentic-oidc.sh final-reveal
+   ./scripts/demo-agentic-oidc.sh
    ```
 
-2. In `approle-login`, call out:
-   - the AppRole alias metadata
-   - the raw login response
-
-3. In `mint-jwt`, call out:
-   - the SPIFFE role definition
-   - the raw mint response
-   - the raw JWT-SVID
-
-4. In `fetch-discovery`, call out:
-   - the discovery document
-   - the `jwks_uri`
-   - the JWKS response
-
-5. In `validate-jwt`, call out:
-   - the validated claims
-   - `sub`
-   - `iss`
-   - `aud`
-
-6. In `final-reveal`, refresh:
-
-   ```text
-   http://localhost:18082/
-   ```
+2. Key call outs:
+   - AppRole:
+      - AppRole role definition
+      - `auth.alias_metadata`
+      - `auth.token_policies`
+   - JWT mint:
+      - SPIFFE role definition
+      - decoded JWT claims
+      - `sub`
+      - `aud`
+   - Discovery and JWKS:
+      - discovery document
+      - `jwks_uri`
+      - JWKS response
+   - JWT validation:
+      - validated claims
+      - `iss`
+      - `aud`
+      - `vault.entity.id`
+   - Final reveal:
+      - masked banker context
+      - refresh
+         ```text
+         http://localhost:18082/
+         ```
 
 ### Suggested talk track
 
