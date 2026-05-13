@@ -146,6 +146,7 @@ PY""",
             "JWT_TOKEN": jwt_token,
             "PYTHONPATH": "/workspace/demo/python",
         },
+        show_command=False,
     )
     jwt_claims = decode_unverified_jwt(jwt_token)
     print_highlights(
@@ -203,7 +204,7 @@ def trust_decision_step(state: dict) -> dict:
     jwt_artifacts = step_artifacts(state, "mint-jwt")
     discovery_artifacts = step_artifacts(state, "fetch-discovery")
     if jwt_has_expired(jwt_artifacts["jwt_token"], leeway_seconds=30):
-        raise RuntimeError("Saved JWT-SVID expired; rerun ./scripts/demo-agentic-oidc.sh mint-jwt")
+        raise RuntimeError("Saved JWT-SVID expired; rerun ./scripts/demo-agentic-oidc.sh")
 
     validated_output = run_text_command(
         "Assistant JWT validation against discovery and JWKS",
@@ -230,6 +231,7 @@ PY
             "AUDIENCE": SPIFFE_AUDIENCE,
             "PYTHONPATH": "/workspace/demo/python",
         },
+        show_command=False,
     )
     validated_claims = json.loads(validated_output)
     print_highlights(

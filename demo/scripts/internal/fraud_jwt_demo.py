@@ -142,6 +142,7 @@ PY""",
             "JWT_TOKEN": jwt_token,
             "PYTHONPATH": "/workspace/demo/python",
         },
+        show_command=False,
     )
     jwt_claims = decode_unverified_jwt(jwt_token)
     print_highlights(
@@ -172,7 +173,7 @@ def trust_decision_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "spiffe-jwt-auth")
     jwt_artifacts = step_artifacts(state, "mint-jwt")
     if jwt_has_expired(jwt_artifacts["jwt_token"], leeway_seconds=30):
-        raise RuntimeError("Saved JWT-SVID expired; rerun ./scripts/demo-jwt-fraud.sh mint-jwt")
+        raise RuntimeError("Saved JWT-SVID expired; rerun ./scripts/demo-jwt-fraud.sh")
 
     root_token = read_text(ROOT_TOKEN_FILE)
     jwt_token = jwt_artifacts["jwt_token"]
@@ -259,7 +260,7 @@ def final_reveal_step(state: dict) -> dict:
     access_artifacts = step_artifacts(state, "spiffe-jwt-auth")
     db_artifacts = step_artifacts(state, "db-creds")
     if lease_has_expired(state, "db-creds", db_artifacts["db_lease_duration"]):
-        raise RuntimeError("Saved DB credentials expired; rerun ./scripts/demo-jwt-fraud.sh db-creds")
+        raise RuntimeError("Saved DB credentials expired; rerun ./scripts/demo-jwt-fraud.sh")
 
     rows_output = run_text_command(
         "Fraud alerts query with Vault-issued Postgres credentials",
@@ -301,6 +302,7 @@ PY
             "DB_USERNAME": db_artifacts["db_username"],
             "DB_PASSWORD": db_artifacts["db_password"],
         },
+        show_command=False,
     )
     rows = json.loads(rows_output)
 

@@ -7,12 +7,7 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-from hashibank_demo.checkpoints import (
-    display_path,
-    next_pending_step,
-    ordered_steps,
-    scenario_state_path,
-)
+from hashibank_demo.checkpoints import ordered_steps
 
 DEMO_COMMAND_CWD = Path("/workspace/demo")
 DEFAULT_VAULT_ADDR = "https://hashibank-vault:8200"
@@ -35,10 +30,17 @@ def demo_relative_path(value: str | Path) -> str:
         return str(candidate)
 
 
-def run_text_command(title: str, command: str, *, env: dict[str, str] | None = None) -> str:
+def run_text_command(
+    title: str,
+    command: str,
+    *,
+    env: dict[str, str] | None = None,
+    show_command: bool = True,
+) -> str:
     prepared = _prepare_command(command)
     _print_heading(title)
-    _print_command(prepared)
+    if show_command:
+        _print_command(prepared)
     output = _run_shell(prepared, env=env)
     _print_output(output)
     return output
@@ -50,6 +52,7 @@ def run_vault_command(
     *,
     token: str | None = None,
     env: dict[str, str] | None = None,
+    show_command: bool = True,
 ) -> str:
     vault_env = {
         "VAULT_ADDR": DEFAULT_VAULT_ADDR,
@@ -59,17 +62,11 @@ def run_vault_command(
         vault_env["VAULT_TOKEN"] = token
     if env:
         vault_env.update({key: str(value) for key, value in env.items()})
-    return run_text_command(title, command, env=vault_env)
+    return run_text_command(title, command, env=vault_env, show_command=show_command)
 
 
 def print_highlights(*lines: str) -> None:
-    entries = [line for line in lines if line]
-    if not entries:
-        return
-    print()
-    print("Highlights:")
-    for line in entries:
-        print(f"- {line}")
+    _ = lines
 
 
 def print_info(*lines: str) -> None:
@@ -81,40 +78,31 @@ def print_info(*lines: str) -> None:
         print(line)
 
 
-def print_status(state: dict[str, Any], script_name: str, *, extra_lines: list[str] | None = None) -> None:
+def print_status(state: dict[str, Any], _script_name: str, *, extra_lines: list[str] | None = None) -> None:
     print(f"Scenario: {state['scenario']} ({state['persona']})")
-    print(f"Checkpoint file: {display_path(scenario_state_path(state['scenario']))}")
     print()
     for step in ordered_steps(state):
         status = step.get("status", "pending")
         label = step.get("label", step["id"])
         print(f"- {step['id']}: {label} [{status}]")
-    next_step = next_pending_step(state)
-    print()
-    if next_step:
-        print(f"Next command: ./scripts/{script_name} {next_step}")
-    else:
-        print("Next command: none")
     for line in extra_lines or []:
+        print()
         print(line)
 
 
-def print_reset(scenario: str, checkpoint_file: str, *, extra_lines: list[str] | None = None) -> None:
+def print_reset(scenario: str, _checkpoint_file: str, *, extra_lines: list[str] | None = None) -> None:
     print(f"Reset {scenario} checkpoint state.")
-    print(f"Checkpoint file: {checkpoint_file}")
     for line in extra_lines or []:
+        print()
         print(line)
 
 
-def print_step_footer(state: dict[str, Any], script_name: str, *, extra_lines: list[str] | None = None) -> None:
+def print_step_footer(state: dict[str, Any], _script_name: str, *, extra_lines: list[str] | None = None) -> None:
+    entries = [line for line in extra_lines or [] if line]
+    if not entries:
+        return
     print()
-    print(f"Checkpoint file: {display_path(scenario_state_path(state['scenario']))}")
-    next_step = next_pending_step(state)
-    if next_step:
-        print(f"Next command: ./scripts/{script_name} {next_step}")
-    else:
-        print("Scenario complete.")
-    for line in extra_lines or []:
+    for line in entries:
         print(line)
 
 

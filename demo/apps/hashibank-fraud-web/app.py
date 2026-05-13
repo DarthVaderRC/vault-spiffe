@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from flask import Flask, jsonify, render_template_string
 
-from hashibank_demo.checkpoints import load_saved_state, next_pending_step, ordered_steps
+from hashibank_demo.checkpoints import load_saved_state, ordered_steps
 
 app = Flask(__name__)
 
 SCENARIO = "fraud"
-SCRIPT_NAME = "demo-jwt-fraud.sh"
-DEFAULT_NEXT_STEP = "approle-login"
-
 PAGE_TEMPLATE = """
 <!doctype html>
 <html lang="en">
@@ -82,15 +79,13 @@ WAITING_TEMPLATE = """
       .meta { color: #94a3b8; }
     </style>
   </head>
-  <body>
-    <h1>HashiBank Fraud Ops</h1>
-    <div class="card">
-      <p>This page waits for prepared demo state. It does not rerun Vault login or database access on page load.</p>
-      <p><strong>Next command:</strong> <code>{{ waiting["next_command"] }}</code></p>
-      <p class="meta">Checkpoint file: {{ waiting["checkpoint_file"] }}</p>
-    </div>
-    <div class="card">
-      <h2>Completed checkpoints</h2>
+    <body>
+      <h1>HashiBank Fraud Ops</h1>
+      <div class="card">
+        <p>This page waits for prepared demo state. It does not rerun Vault login or database access on page load.</p>
+      </div>
+      <div class="card">
+        <h2>Completed checkpoints</h2>
       <ul>
         {% if waiting["completed_steps"] %}
           {% for step in waiting["completed_steps"] %}
@@ -109,11 +104,8 @@ WAITING_TEMPLATE = """
 def build_waiting_state() -> dict:
     state = load_saved_state(SCENARIO) or {}
     completed = [step["label"] for step in ordered_steps(state) if step.get("status") == "completed"]
-    next_step = next_pending_step(state) or DEFAULT_NEXT_STEP
     return {
         "completed_steps": completed,
-        "next_command": f"./scripts/{SCRIPT_NAME} {next_step}",
-        "checkpoint_file": "runtime/checkpoints/fraud.json",
     }
 
 

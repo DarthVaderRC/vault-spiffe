@@ -81,11 +81,18 @@ show_heading() {
 }
 
 pause_for_continue() {
+  local key
+
   if [[ ! -t 0 || ! -t 1 || "${HASHIBANK_DEMO_NO_PAUSE:-0}" == "1" ]]; then
     return 0
   fi
 
-  read -r -n 1 -s -p "Press any key to continue..."
+  while true; do
+    read -r -n 1 -s -p "Press n to continue..." key
+    if [[ "$key" == "n" || "$key" == "N" ]]; then
+      break
+    fi
+  done
   printf '\n\n'
 }
 

@@ -171,7 +171,7 @@ def trust_decision_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "spiffe-x509-auth")
     cert_artifacts = step_artifacts(state, "pki-issue")
     if certificate_has_expired(read_text(cert_artifacts["certificate_file"]), leeway_seconds=30):
-        raise RuntimeError("Saved certificate expired; rerun ./scripts/demo-x509-payments.sh pki-issue")
+        raise RuntimeError("Saved certificate expired; rerun ./scripts/demo-x509-payments.sh")
 
     root_token = read_text(ROOT_TOKEN_FILE)
 

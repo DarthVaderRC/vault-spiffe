@@ -103,6 +103,8 @@ configure_vault() {
   local approle_accessor
   local fraud_template
   local assistant_template
+  local pki_issuing_certificates_url="https://hashibank-vault:8200/v1/pki/ca"
+  local pki_crl_distribution_points_url="https://hashibank-vault:8200/v1/pki/crl"
 
   root_token=$(<"$ROOT_TOKEN_FILE")
 
@@ -140,6 +142,8 @@ configure_vault() {
   if ! vault_exec "VAULT_TOKEN=$root_token vault secrets list | grep -q '^database/'"; then
     vault_exec "VAULT_TOKEN=$root_token vault secrets enable database" >/dev/null
   fi
+
+  vault_exec "VAULT_TOKEN=$root_token vault write pki/config/urls issuing_certificates='$pki_issuing_certificates_url' crl_distribution_points='$pki_crl_distribution_points_url'" >/dev/null
 
   if ! vault_exec "VAULT_TOKEN=$root_token vault read pki/cert/ca >/dev/null 2>&1"; then
     vault_exec "VAULT_TOKEN=$root_token vault write pki/root/generate/internal common_name='HashiBank Demo SPIFFE Root' ttl=8760h" >/dev/null
@@ -215,7 +219,7 @@ review_bootstrap() {
 
   printf '\nBootstrap review uses grouped Vault CLI output and pauses between sections.\n'
 
-  show_heading "Group A: Policies"
+  show_heading "Policies"
   show_vault_command_output "Payments API issuer policy" "vault policy read identity-payments-issuer"
   show_vault_command_output "Fraud SPIFFE policy" "vault policy read identity-fraud-spiffe"
   show_vault_command_output "Assistant SPIFFE policy" "vault policy read identity-assistant-spiffe"
@@ -223,33 +227,33 @@ review_bootstrap() {
   show_vault_command_output "Fraud access policy" "vault policy read access-fraud"
   pause_for_continue
 
-  show_heading "Group B: AppRole definitions"
+  show_heading "AppRole definitions"
   show_vault_command_output "Payments AppRole definition" "vault read auth/approle/role/payments-api"
   show_vault_command_output "Fraud AppRole definition" "vault read auth/approle/role/fraud-ops-web"
   show_vault_command_output "Assistant AppRole definition" "vault read auth/approle/role/relationship-assistant"
   pause_for_continue
 
-  show_heading "Group C: PKI role"
+  show_heading "PKI role"
   show_vault_command_output "PKI role for payments certificates" "vault read pki/roles/payments-spiffe"
   pause_for_continue
 
-  show_heading "Group D: SPIFFE engine config and SPIFFE roles"
+  show_heading "SPIFFE engine config and SPIFFE roles"
   show_vault_command_output "SPIFFE engine configuration" "vault read spiffe/config"
   show_vault_command_output "Fraud SPIFFE role definition" "vault read spiffe/role/fraud-ops-web"
   show_vault_command_output "Assistant SPIFFE role definition" "vault read spiffe/role/relationship-assistant"
   pause_for_continue
 
-  show_heading "Group E: SPIFFE auth configuration"
+  show_heading "SPIFFE auth configuration"
   show_vault_command_output "SPIFFE X.509 auth configuration" "vault read auth/spiffe-x509/config"
   show_vault_command_output "SPIFFE JWT auth configuration" "vault read auth/spiffe-jwt/config"
   pause_for_continue
 
-  show_heading "Group F: SPIFFE auth roles"
+  show_heading "SPIFFE auth roles"
   show_vault_command_output "SPIFFE X.509 auth role" "vault read auth/spiffe-x509/role/payments-api"
   show_vault_command_output "SPIFFE JWT auth role" "vault read auth/spiffe-jwt/role/fraud-ops-web"
   pause_for_continue
 
-  show_heading "Group G: KV secrets"
+  show_heading "KV secrets"
   show_vault_command_output "Payments API KV secrets" "vault kv get kv/payments/api-secrets"
 }
 
@@ -267,7 +271,7 @@ bootstrap_demo() {
   generate_server_cert "hashibank-vault" "hashibank-vault"
 
   echo "Starting HashiBank Vault Cluster and demo services..."
-  compose up -d --build hashibank-vault postgres-hashibank demo-tools
+  compose up -d --build hashibank-vault postgres-hashibank demo-tools >/dev/null 2>&1
 
   wait_for_https "$VAULT_SERVICE" "$VAULT_HOST_ADDR"
   wait_for_postgres
@@ -277,8 +281,8 @@ bootstrap_demo() {
   echo "Configuring HashiBank Vault Cluster..."
   configure_vault
 
-  echo "Starting web experiences..."
-  compose up -d --build hashibank-fraud-web hashibank-assistant
+  # echo "Starting web experiences..."
+  compose up -d --build hashibank-fraud-web hashibank-assistant >/dev/null 2>&1
 
   cat <<EOF
 
@@ -287,32 +291,12 @@ HashiBank Vault SPIFFE demo is ready.
 Bootstrap review:
   ./scripts/bootstrap.sh review
 
-Payments API X.509 flow:
-  ./scripts/demo-x509-payments.sh approle-login
-  ./scripts/demo-x509-payments.sh pki-issue
-  ./scripts/demo-x509-payments.sh spiffe-x509-auth
-  ./scripts/demo-x509-payments.sh payments-api-kv-secrets
-  ./scripts/demo-x509-payments.sh    # rerun full flow
+Three demo scenarios (each pauses between checkpoints):
+  ./scripts/demo-x509-payments.sh
+  ./scripts/demo-jwt-fraud.sh
+  ./scripts/demo-agentic-oidc.sh
 
-Fraud Ops flow:
-  ./scripts/demo-jwt-fraud.sh approle-login
-  ./scripts/demo-jwt-fraud.sh mint-jwt
-  ./scripts/demo-jwt-fraud.sh spiffe-jwt-auth
-  ./scripts/demo-jwt-fraud.sh db-creds
-  ./scripts/demo-jwt-fraud.sh final-reveal
-  ./scripts/demo-jwt-fraud.sh         # rerun full flow
-  http://localhost:${FRAUD_WEB_PORT}/
-
-Relationship assistant flow:
-  ./scripts/demo-agentic-oidc.sh approle-login
-  ./scripts/demo-agentic-oidc.sh mint-jwt
-  ./scripts/demo-agentic-oidc.sh fetch-discovery
-  ./scripts/demo-agentic-oidc.sh validate-jwt
-  ./scripts/demo-agentic-oidc.sh final-reveal
-  ./scripts/demo-agentic-oidc.sh      # rerun full flow
-  http://localhost:${ASSISTANT_WEB_PORT}/
-
-To tear down and clean generated local artifacts:
+Tear down environment:
   ./scripts/teardown.sh
 EOF
 }
