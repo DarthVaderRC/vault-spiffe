@@ -85,7 +85,6 @@ open playgrounds/repo-code-explorer.html
 - The demo uses **one Vault enterprise cluster**: `hashibank-vault`.
 - The X.509 flow uses **Vault PKI with SPIFFE URI SANs**; it does **not** claim native X.509 SVID issuance from the SPIFFE secrets engine.
 - The JWT flows use the **SPIFFE secrets engine** for JWT-SVID minting and **SPIFFE auth** for login.
-- SCIM and SAML are covered in the customer deck as **adjacent identity topics**, not as the main runnable demo path.
 
 ## Where to start reading
 
