@@ -1,6 +1,6 @@
 # vault-spiffe
 
-A runnable local HashiBank demo for showing how **HashiCorp Vault** fits into a broader **SPIFFE / non-human identity** strategy.
+A runnable local HashiBank demo for showing how **HashiCorp Vault** implements SPIFFE.
 
 This repository combines:
 
