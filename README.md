@@ -1,4 +1,6 @@
-# vault-spiffe
+![HashiCorp Vault + SPIFFE](./content/vault-spiffe-infogram.png)
+
+# HashiCorp Vault and Spiffe
 
 A runnable local HashiBank demo for showing how **HashiCorp Vault** implements SPIFFE.
 
@@ -93,7 +95,7 @@ open playgrounds/repo-code-explorer.html
 
 ## Resources
 
-These HashiCorp links map directly to the features used in the demo and also work well on a closing slide.
+These HashiCorp links map directly to the features used in the demo:
 
 - [Vault documentation](https://developer.hashicorp.com/vault/docs)
 - [Vault Enterprise documentation](https://developer.hashicorp.com/vault/docs/enterprise)
