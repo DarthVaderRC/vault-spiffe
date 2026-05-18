@@ -1,10 +1,11 @@
+
 # HashiBank Vault SPIFFE demo
 
-This demo now runs on a single **HashiBank Vault Cluster** backed by Vault Enterprise 2.0. The cluster hosts:
+This demo runs on a single **HashiBank Vault Cluster** backed by Vault Enterprise 2.0. The cluster hosts:
 
 - AppRole for machine authentication
 - PKI for X.509 issuance
-- the SPIFFE secrets engine for JWT-SVID minting
+- SPIFFE secrets engine for JWT-SVID minting
 - SPIFFE auth mounts for X.509 and JWT login
 - KV and database secrets for the business outcomes
 
@@ -38,6 +39,9 @@ For a presenter-oriented runbook with talk track and highlight cues, use [DEMO_W
    - discovery and JWKS retrieval from the SPIFFE engine
    - downstream validation with OIDC-style patterns
    - reveal of masked banker context
+
+## Demo architecture
+![HashiCorp Vault + SPIFFE](../media/demo-setup.png)
 
 ## Prerequisites
 

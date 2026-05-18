@@ -1,4 +1,4 @@
-![HashiCorp Vault + SPIFFE](./content/vault-spiffe-infogram.png)
+![HashiCorp Vault + SPIFFE](./media/vault-spiffe-infogram.png)
 
 # HashiCorp Vault and Spiffe
 
