@@ -80,6 +80,30 @@ show_heading() {
   printf '\n=== %s ===\n\n' "$title"
 }
 
+# Formatter Function
+print_heading() {
+    local title="$1"
+    local style="${2:-34}" # Default is blue text (34)
+    local fill_char="${3:-#}"
+    local term_width=$(tput cols)
+    
+    # Calculate padding
+    local text_len=${#title}
+    local total_len=$((term_width > 80 ? 80 : term_width))
+    local padding=$(( (total_len - text_len - 4) / 2 ))
+    
+    # Build borders
+    local border=$(printf "%0.s${fill_char}" $(seq 1 $total_len))
+    local spaces=$(printf "%0.s " $(seq 1 $padding))
+    
+    # Output
+    echo
+    printf "\e[1;${style}m%s\e[0m\n" "$border"
+    printf "\e[1;${style}m%s  %s  %s\e[0m\n" "$fill_char" "$title" "$fill_char"
+    printf "\e[1;${style}m%s\e[0m\n" "$border"
+    echo
+}
+
 pause_for_continue() {
   local key
 

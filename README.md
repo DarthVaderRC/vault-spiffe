@@ -90,3 +90,17 @@ open playgrounds/repo-code-explorer.html
 
 - Start with `demo/README.md` if you want to run the lab.
 - Start with `demo/DEMO_WALKTHROUGH.md` if you want to run through the demo with a talk track.
+
+## Resources
+
+These HashiCorp links map directly to the features used in the demo and also work well on a closing slide.
+
+- [Vault documentation](https://developer.hashicorp.com/vault/docs)
+- [Vault Enterprise documentation](https://developer.hashicorp.com/vault/docs/enterprise)
+- [AppRole auth method](https://developer.hashicorp.com/vault/docs/auth/approle)
+- [PKI secrets engine](https://developer.hashicorp.com/vault/docs/secrets/pki)
+- [SPIFFE auth method](https://developer.hashicorp.com/vault/docs/auth/spiffe)
+- [SPIFFE secrets engine](https://developer.hashicorp.com/vault/docs/secrets/spiffe)
+- [Database secrets engine](https://developer.hashicorp.com/vault/docs/secrets/databases)
+- [What is SPIFFE](https://spiffe.io/docs/latest/spiffe-about/overview/)
+- [Demo code on GitHub](https://github.com/DarthVaderRC/vault-spiffe)

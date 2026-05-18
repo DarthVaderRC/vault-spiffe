@@ -217,43 +217,43 @@ review_bootstrap() {
     exit 1
   fi
 
-  printf '\nBootstrap review uses grouped Vault CLI output and pauses between sections.\n'
+  printf '\nBootstrap review displays Vault configurations setup for the demo.\n'
 
-  show_heading "Policies"
-  show_vault_command_output "Payments API issuer policy" "vault policy read identity-payments-issuer"
-  show_vault_command_output "Fraud SPIFFE policy" "vault policy read identity-fraud-spiffe"
-  show_vault_command_output "Assistant SPIFFE policy" "vault policy read identity-assistant-spiffe"
-  show_vault_command_output "Payments access policy" "vault policy read access-payments"
-  show_vault_command_output "Fraud access policy" "vault policy read access-fraud"
-  pause_for_continue
-
-  show_heading "AppRole definitions"
+  print_heading "AppRole definitions"
   show_vault_command_output "Payments AppRole definition" "vault read auth/approle/role/payments-api"
-  show_vault_command_output "Fraud AppRole definition" "vault read auth/approle/role/fraud-ops-web"
-  show_vault_command_output "Assistant AppRole definition" "vault read auth/approle/role/relationship-assistant"
+  show_vault_command_output "Payments API issuer policy" "vault policy read identity-payments-issuer"
   pause_for_continue
-
-  show_heading "PKI role"
+  show_vault_command_output "Fraud AppRole definition" "vault read auth/approle/role/fraud-ops-web"
+  show_vault_command_output "Fraud SPIFFE policy" "vault policy read identity-fraud-spiffe"
+  pause_for_continue
+  show_vault_command_output "Assistant AppRole definition" "vault read auth/approle/role/relationship-assistant"
+  show_vault_command_output "Assistant SPIFFE policy" "vault policy read identity-assistant-spiffe"
+  pause_for_continue
+  print_heading "PKI role"
   show_vault_command_output "PKI role for payments certificates" "vault read pki/roles/payments-spiffe"
   pause_for_continue
 
-  show_heading "SPIFFE engine config and SPIFFE roles"
+  print_heading "SPIFFE engine config and SPIFFE roles"
   show_vault_command_output "SPIFFE engine configuration" "vault read spiffe/config"
   show_vault_command_output "Fraud SPIFFE role definition" "vault read spiffe/role/fraud-ops-web"
   show_vault_command_output "Assistant SPIFFE role definition" "vault read spiffe/role/relationship-assistant"
   pause_for_continue
 
-  show_heading "SPIFFE auth configuration"
+  print_heading "SPIFFE auth configuration"
   show_vault_command_output "SPIFFE X.509 auth configuration" "vault read auth/spiffe-x509/config"
+  pause_for_continue
   show_vault_command_output "SPIFFE JWT auth configuration" "vault read auth/spiffe-jwt/config"
   pause_for_continue
 
-  show_heading "SPIFFE auth roles"
+  print_heading "SPIFFE auth roles"
   show_vault_command_output "SPIFFE X.509 auth role" "vault read auth/spiffe-x509/role/payments-api"
+  show_vault_command_output "Payments access policy" "vault policy read access-payments"
+  pause_for_continue
   show_vault_command_output "SPIFFE JWT auth role" "vault read auth/spiffe-jwt/role/fraud-ops-web"
+  show_vault_command_output "Fraud access policy" "vault policy read access-fraud"
   pause_for_continue
 
-  show_heading "KV secrets"
+  print_heading "KV secrets"
   show_vault_command_output "Payments API KV secrets" "vault kv get kv/payments/api-secrets"
 }
 
