@@ -1,3 +1,7 @@
-*
+
+approle/
+generated/
+hashibank-vault/
+postgres/
+trust/
 !.gitignore
-!templates/
