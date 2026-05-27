@@ -22,6 +22,48 @@ services:
       - ./runtime/hashibank-vault/file:/vault/file
       - ./runtime:/vault/runtime
 
+  hashibank-vault-perf-primary:
+    image: ${VAULT_ENTERPRISE_IMAGE:-hashicorp/vault-enterprise:2.0.0-ent}
+    user: "0:0"
+    cap_add:
+      - IPC_LOCK
+    command:
+      - vault
+      - server
+      - -config=/vault/config/hashibank-vault-perf-primary.hcl
+    environment:
+      VAULT_LICENSE_PATH: /vault/config/license.hclic
+    ports:
+      - "${HASHIBANK_VAULT_PERF_PRIMARY_HOST_PORT:-19100}:8200"
+    volumes:
+      - ../license.hclic:/vault/config/license.hclic:ro
+      - ./config/hashibank-vault-perf-primary.hcl:/vault/config/hashibank-vault-perf-primary.hcl:ro
+      - ./config/tls:/vault/config/tls
+      - ./policies:/vault/policies:ro
+      - ./runtime/hashibank-vault-perf-primary/file:/vault/file
+      - ./runtime:/vault/runtime
+
+  hashibank-vault-perf:
+    image: ${VAULT_ENTERPRISE_IMAGE:-hashicorp/vault-enterprise:2.0.0-ent}
+    user: "0:0"
+    cap_add:
+      - IPC_LOCK
+    command:
+      - vault
+      - server
+      - -config=/vault/config/hashibank-vault-perf.hcl
+    environment:
+      VAULT_LICENSE_PATH: /vault/config/license.hclic
+    ports:
+      - "${HASHIBANK_VAULT_PERF_HOST_PORT:-19200}:8200"
+    volumes:
+      - ../license.hclic:/vault/config/license.hclic:ro
+      - ./config/hashibank-vault-perf.hcl:/vault/config/hashibank-vault-perf.hcl:ro
+      - ./config/tls:/vault/config/tls
+      - ./policies:/vault/policies:ro
+      - ./runtime/hashibank-vault-perf/file:/vault/file
+      - ./runtime:/vault/runtime
+
   postgres-hashibank:
     image: postgres:16-alpine
     environment:
@@ -67,9 +109,6 @@ services:
       - bash
       - -lc
       - sleep infinity
-    depends_on:
-      - hashibank-vault
-      - postgres-hashibank
     working_dir: /workspace/demo
     volumes:
       - ../:/workspace

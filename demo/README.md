@@ -66,12 +66,16 @@ Default host ports:
 hashibank-vault  -> https://localhost:18200
 fraud web        -> http://localhost:18081
 assistant web    -> http://localhost:18082
+perf primary     -> https://localhost:19100 (optional workflow)
+perf replica     -> https://localhost:19200 (optional workflow)
 ```
 
 Override with:
 
 ```bash
 export HASHIBANK_VAULT_HOST_PORT=18200
+export HASHIBANK_VAULT_PERF_PRIMARY_HOST_PORT=19100
+export HASHIBANK_VAULT_PERF_HOST_PORT=19200
 export HASHIBANK_FRAUD_WEB_PORT=18081
 export HASHIBANK_ASSISTANT_WEB_PORT=18082
 ```
@@ -178,6 +182,44 @@ http://localhost:18082/
 
 The page renders from prepared checkpoint state and does not mint or validate a JWT on page load.
 
+## Performance replica SPIFFE issuer experiment
+
+To test how the SPIFFE secrets engine behaves on a performance replica when `jwt_issuer_url` is omitted from the mount configuration, run:
+
+```bash
+./scripts/perf-repl-spiffe-issuer.sh
+```
+
+This opt-in workflow:
+
+1. starts a dedicated raft-backed primary cluster as `hashibank-vault-perf-primary`
+2. starts a performance replica cluster as `hashibank-vault-perf`
+3. enables performance replication from the dedicated primary to the replica
+4. enables a new SPIFFE mount on the primary at `spiffe-default-issuer/` without `jwt_issuer_url`
+5. authenticates to the replica through a replicated AppRole
+6. mints a JWT-SVID from the replica and decodes its `iss` claim
+
+The existing single-cluster demo remains file-backed and unchanged. The replication experiment uses a separate raft-backed primary/replica pair because Vault replication requires a storage backend with transactional updates and WAL support.
+
+The script prints:
+
+- replication status for the primary and replica
+- the replicated SPIFFE mount config read from both clusters
+- the OIDC discovery documents for the new mount on both clusters
+- the observed `iss` value from the JWT minted on the performance replica
+- whether that `iss` matches the primary cluster API address or the replica cluster API address
+
+Saved artifacts:
+
+- `demo/runtime/generated/perf-repl-spiffe-issuer-result.json`
+- `demo/runtime/generated/perf-repl-spiffe-issuer.jwt`
+
+To reprint the captured evidence without rerunning the workflow:
+
+```bash
+./scripts/perf-repl-spiffe-issuer.sh status
+```
+
 ## Runtime artifacts
 
 Bootstrap writes ephemeral material under `demo/runtime/`, including:
@@ -187,6 +229,7 @@ Bootstrap writes ephemeral material under `demo/runtime/`, including:
 - checkpoint state under `demo/runtime/checkpoints/`
 - rendered SPIFFE template files
 - the generated payments certificate and key
+- the performance replica issuer experiment JSON result and raw JWT when that workflow is run
 
 `demo/runtime/` is git-ignored and removed by `./scripts/teardown.sh`. Generated TLS files under `demo/config/tls/` are also treated as disposable local artifacts.
 

@@ -68,10 +68,12 @@ def mint_spiffe_jwt(
     token: str,
     role: str,
     audience: str,
+    *,
+    mount_path: str = "spiffe",
 ) -> tuple[str, dict[str, Any]]:
     data = _request(
         "POST",
-        f"{base_url}/v1/spiffe/role/{quote(role, safe='')}/mintjwt",
+        f"{base_url}/v1/{quote(mount_path, safe='')}/role/{quote(role, safe='')}/mintjwt",
         ca_cert,
         headers={"X-Vault-Token": token},
         payload={"audience": audience},
