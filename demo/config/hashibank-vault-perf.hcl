@@ -15,6 +15,6 @@ listener "tcp" {
 }
 
 storage "raft" {
-  path = "/vault/file"
+  path = "/vault/raft"
   node_id = "hashibank-vault-perf"
 }

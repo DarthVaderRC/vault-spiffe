@@ -7,15 +7,14 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 ACTION="${1:-run}"
 
-EXPERIMENT_PRIMARY_SERVICE="hashibank-vault-perf-primary"
-EXPERIMENT_PRIMARY_HOST_PORT="${HASHIBANK_VAULT_PERF_PRIMARY_HOST_PORT:-19100}"
-EXPERIMENT_PRIMARY_HOST_ADDR="https://localhost:${EXPERIMENT_PRIMARY_HOST_PORT}"
-EXPERIMENT_PRIMARY_RUNTIME_DIR="$RUNTIME_DIR/${EXPERIMENT_PRIMARY_SERVICE}"
-EXPERIMENT_PRIMARY_ROOT_TOKEN_FILE="$EXPERIMENT_PRIMARY_RUNTIME_DIR/root-token"
+PRIMARY_SERVICE="$VAULT_SERVICE"
+PRIMARY_HOST_ADDR="$VAULT_HOST_ADDR"
+PRIMARY_ROOT_TOKEN_FILE="$ROOT_TOKEN_FILE"
 
 REPLICA_SERVICE="$PERF_VAULT_SERVICE"
 REPLICA_HOST_ADDR="$PERF_VAULT_HOST_ADDR"
 REPLICA_RUNTIME_DIR="$PERF_VAULT_RUNTIME_DIR"
+REPLICA_RUNTIME_STORAGE_DIR="$PERF_VAULT_RUNTIME_STORAGE_DIR"
 REPLICA_ROOT_TOKEN_FILE="$PERF_ROOT_TOKEN_FILE"
 
 TEST_MOUNT="spiffe-default-issuer"
@@ -66,18 +65,37 @@ replication_status() {
     "$base_url/v1/sys/replication/performance/status"
 }
 
+ensure_primary_demo_bootstrap() {
+  local root_token
+
+  if [[ -f "$PRIMARY_ROOT_TOKEN_FILE" && -f "$VAULT_RUNTIME_DIR/init.txt" ]]; then
+    compose up -d --build "$PRIMARY_SERVICE" postgres-hashibank demo-tools >/dev/null 2>&1
+    wait_for_vault_service "$PRIMARY_SERVICE"
+    wait_for_postgres
+    initialise_and_unseal_vault_service "$PRIMARY_SERVICE"
+
+    root_token=$(<"$PRIMARY_ROOT_TOKEN_FILE")
+    if vault_exec "VAULT_TOKEN=$root_token vault read spiffe/config >/dev/null 2>&1"; then
+      return 0
+    fi
+  fi
+
+  echo "Bootstrapping hashibank-vault so the performance replica uses the same primary cluster as the demo..."
+  HASHIBANK_DEMO_NO_PAUSE=1 "$SCRIPT_DIR/bootstrap.sh"
+}
+
 enable_performance_primary() {
   local root_token
   local mode
 
-  root_token=$(<"$EXPERIMENT_PRIMARY_ROOT_TOKEN_FILE")
-  mode=$(replication_status "$EXPERIMENT_PRIMARY_HOST_ADDR" | json_get "data.mode")
+  root_token=$(<"$PRIMARY_ROOT_TOKEN_FILE")
+  mode=$(replication_status "$PRIMARY_HOST_ADDR" | json_get "data.mode")
   if [[ "$mode" == "primary" ]]; then
     return 0
   fi
 
-  echo "Enabling performance replication primary on $EXPERIMENT_PRIMARY_SERVICE..."
-  vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  echo "Enabling performance replication primary on $PRIMARY_SERVICE..."
+  vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault write -f sys/replication/performance/primary/enable" >/dev/null
 }
 
@@ -86,8 +104,8 @@ generate_secondary_activation_token() {
   local raw_response
   local activation_token
 
-  root_token=$(<"$EXPERIMENT_PRIMARY_ROOT_TOKEN_FILE")
-  raw_response=$(vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  root_token=$(<"$PRIMARY_ROOT_TOKEN_FILE")
+  raw_response=$(vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault write -format=json sys/replication/performance/primary/secondary-token id=$REPLICA_ID")
   activation_token=$(printf '%s' "$raw_response" | python3 -c '
 import json
@@ -121,7 +139,7 @@ enable_performance_secondary() {
 
   echo "Enabling performance replication secondary on $REPLICA_SERVICE..."
   vault_exec_service "$REPLICA_SERVICE" \
-    "VAULT_TOKEN=$secondary_root_token vault write sys/replication/performance/secondary/enable token=$(<"$ACTIVATION_TOKEN_FILE") primary_api_addr=https://hashibank-vault-perf-primary:8200 ca_file=/vault/config/tls/hashibank-root-ca.crt" >/dev/null
+    "VAULT_TOKEN=$secondary_root_token vault write sys/replication/performance/secondary/enable token=$(<"$ACTIVATION_TOKEN_FILE") primary_api_addr=https://hashibank-vault:8200 ca_file=/vault/config/tls/hashibank-root-ca.crt" >/dev/null
 }
 
 wait_for_replication_ready() {
@@ -134,7 +152,7 @@ wait_for_replication_ready() {
   local replica_connection
 
   for _ in $(seq 1 60); do
-    primary_status=$(replication_status "$EXPERIMENT_PRIMARY_HOST_ADDR" 2>/dev/null || true)
+    primary_status=$(replication_status "$PRIMARY_HOST_ADDR" 2>/dev/null || true)
     replica_status=$(replication_status "$REPLICA_HOST_ADDR" 2>/dev/null || true)
 
     if [[ -z "$primary_status" || -z "$replica_status" ]]; then
@@ -166,10 +184,10 @@ configure_test_mount() {
   local root_token
   local approle_accessor
 
-  root_token=$(<"$EXPERIMENT_PRIMARY_ROOT_TOKEN_FILE")
+  root_token=$(<"$PRIMARY_ROOT_TOKEN_FILE")
 
-  if ! vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault auth list | grep -q '^approle/'"; then
-    vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault auth enable approle" >/dev/null
+  if ! vault_exec_service "$PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault auth list | grep -q '^approle/'"; then
+    vault_exec_service "$PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault auth enable approle" >/dev/null
   fi
 
   cat >"$POLICY_FILE" <<EOF
@@ -181,10 +199,10 @@ path "${TEST_MOUNT}/role/${TEST_ROLE}/mintjwt" {
   capabilities = ["update"]
 }
 EOF
-  vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault policy write ${TEST_POLICY} /vault/runtime/generated/${TEST_POLICY}.hcl" >/dev/null
 
-  approle_accessor=$(vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault auth list -format=json" | python3 -c '
+  approle_accessor=$(vault_exec_service "$PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault auth list -format=json" | python3 -c '
 import json
 import sys
 
@@ -195,19 +213,19 @@ if not entry:
 print(entry["accessor"])
 ')
 
-  if vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault read ${TEST_MOUNT}/config >/dev/null 2>&1"; then
-    vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault secrets disable ${TEST_MOUNT}" >/dev/null
+  if vault_exec_service "$PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault read ${TEST_MOUNT}/config >/dev/null 2>&1"; then
+    vault_exec_service "$PRIMARY_SERVICE" "VAULT_TOKEN=$root_token vault secrets disable ${TEST_MOUNT}" >/dev/null
   fi
 
-  vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault secrets enable -path=${TEST_MOUNT} spiffe" >/dev/null
-  vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault write ${TEST_MOUNT}/config trust_domain=${TEST_TRUST_DOMAIN} jwt_oidc_compatibility_mode=true key_lifetime=24h bundle_refresh_hint=1h" >/dev/null
 
   cat >"$TEMPLATE_FILE" <<EOF
 {"sub":"spiffe://${TEST_TRUST_DOMAIN}/{{identity.entity.aliases.${approle_accessor}.custom_metadata.spiffe_path}}","experiment":"perf-repl-default-issuer"}
 EOF
-  vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault write ${TEST_MOUNT}/role/${TEST_ROLE} template=@/vault/runtime/templates/${TEST_ROLE}-template.json ttl=15m use_jti_claim=true" >/dev/null
 
   cat >"$APPROLE_PAYLOAD_FILE" <<EOF
@@ -219,11 +237,11 @@ EOF
     --header "Content-Type: application/json" \
     --request POST \
     --data @"$APPROLE_PAYLOAD_FILE" \
-    "$EXPERIMENT_PRIMARY_HOST_ADDR/v1/auth/approle/role/${TEST_APPROLE}" >/dev/null
+    "$PRIMARY_HOST_ADDR/v1/auth/approle/role/${TEST_APPROLE}" >/dev/null
 
-  vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault read -field=role_id auth/approle/role/${TEST_APPROLE}/role-id" >"$RUNTIME_DIR/approle/${TEST_APPROLE}.role_id"
-  vault_exec_service "$EXPERIMENT_PRIMARY_SERVICE" \
+  vault_exec_service "$PRIMARY_SERVICE" \
     "VAULT_TOKEN=$root_token vault write -force -field=secret_id auth/approle/role/${TEST_APPROLE}/secret-id" >"$RUNTIME_DIR/approle/${TEST_APPROLE}.secret_id"
 }
 
@@ -235,7 +253,7 @@ run_validation() {
 show_status() {
   show_command_output \
     "Primary performance replication status" \
-    "curl --silent --show-error --cacert config/tls/hashibank-root-ca.crt ${EXPERIMENT_PRIMARY_HOST_ADDR}/v1/sys/replication/performance/status | python3 -m json.tool"
+    "curl --silent --show-error --cacert config/tls/hashibank-root-ca.crt ${PRIMARY_HOST_ADDR}/v1/sys/replication/performance/status | python3 -m json.tool"
   show_command_output \
     "Replica performance replication status" \
     "curl --silent --show-error --cacert config/tls/hashibank-root-ca.crt ${REPLICA_HOST_ADDR}/v1/sys/replication/performance/status | python3 -m json.tool"
@@ -250,8 +268,10 @@ show_status() {
 }
 
 run_workflow() {
-  compose rm -sf "$EXPERIMENT_PRIMARY_SERVICE" "$REPLICA_SERVICE" >/dev/null 2>&1 || true
-  rm -rf "$EXPERIMENT_PRIMARY_RUNTIME_DIR" "$REPLICA_RUNTIME_DIR"
+  ensure_primary_demo_bootstrap
+
+  compose rm -sf "$REPLICA_SERVICE" >/dev/null 2>&1 || true
+  rm -rf "$REPLICA_RUNTIME_DIR"
   rm -f \
     "$RESULT_FILE" \
     "$RUNTIME_DIR/generated/perf-repl-spiffe-issuer.jwt" \
@@ -259,24 +279,20 @@ run_workflow() {
     "$RUNTIME_DIR/approle/${TEST_APPROLE}.secret_id"
 
   mkdir -p \
-    "$EXPERIMENT_PRIMARY_RUNTIME_DIR/file" \
-    "$REPLICA_RUNTIME_DIR/file" \
+    "$REPLICA_RUNTIME_STORAGE_DIR" \
     "$RUNTIME_DIR/generated" \
     "$RUNTIME_DIR/approle" \
     "$RUNTIME_DIR/templates" \
     "$TLS_DIR"
 
   ensure_demo_tls_root_ca
-  ensure_demo_server_cert "$EXPERIMENT_PRIMARY_SERVICE" "$EXPERIMENT_PRIMARY_SERVICE"
   ensure_demo_server_cert "$REPLICA_SERVICE" "$REPLICA_SERVICE"
 
-  echo "Starting primary and performance replica Vault clusters..."
-  compose up -d --build "$EXPERIMENT_PRIMARY_SERVICE" "$REPLICA_SERVICE" demo-tools >/dev/null 2>&1
+  echo "Starting performance replica Vault cluster..."
+  compose up -d --build "$REPLICA_SERVICE" demo-tools >/dev/null 2>&1
 
-  wait_for_https "$EXPERIMENT_PRIMARY_SERVICE" "$EXPERIMENT_PRIMARY_HOST_ADDR"
   wait_for_https "$REPLICA_SERVICE" "$REPLICA_HOST_ADDR"
 
-  initialise_and_unseal_vault_service "$EXPERIMENT_PRIMARY_SERVICE"
   initialise_and_unseal_vault_service "$REPLICA_SERVICE"
 
   enable_performance_primary

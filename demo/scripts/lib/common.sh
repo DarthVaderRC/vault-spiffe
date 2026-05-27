@@ -12,16 +12,13 @@ VAULT_SERVICE="hashibank-vault"
 VAULT_HOST_PORT="${HASHIBANK_VAULT_HOST_PORT:-18200}"
 VAULT_HOST_ADDR="https://localhost:${VAULT_HOST_PORT}"
 VAULT_RUNTIME_DIR="$RUNTIME_DIR/hashibank-vault"
+VAULT_RUNTIME_STORAGE_DIR="$VAULT_RUNTIME_DIR/raft"
 ROOT_TOKEN_FILE="$VAULT_RUNTIME_DIR/root-token"
-PERF_PRIMARY_VAULT_SERVICE="hashibank-vault-perf-primary"
-PERF_PRIMARY_VAULT_HOST_PORT="${HASHIBANK_VAULT_PERF_PRIMARY_HOST_PORT:-19100}"
-PERF_PRIMARY_VAULT_HOST_ADDR="https://localhost:${PERF_PRIMARY_VAULT_HOST_PORT}"
-PERF_PRIMARY_VAULT_RUNTIME_DIR="$RUNTIME_DIR/hashibank-vault-perf-primary"
-PERF_PRIMARY_ROOT_TOKEN_FILE="$PERF_PRIMARY_VAULT_RUNTIME_DIR/root-token"
 PERF_VAULT_SERVICE="hashibank-vault-perf"
 PERF_VAULT_HOST_PORT="${HASHIBANK_VAULT_PERF_HOST_PORT:-19200}"
 PERF_VAULT_HOST_ADDR="https://localhost:${PERF_VAULT_HOST_PORT}"
 PERF_VAULT_RUNTIME_DIR="$RUNTIME_DIR/hashibank-vault-perf"
+PERF_VAULT_RUNTIME_STORAGE_DIR="$PERF_VAULT_RUNTIME_DIR/raft"
 PERF_ROOT_TOKEN_FILE="$PERF_VAULT_RUNTIME_DIR/root-token"
 FRAUD_WEB_PORT="${HASHIBANK_FRAUD_WEB_PORT:-18081}"
 ASSISTANT_WEB_PORT="${HASHIBANK_ASSISTANT_WEB_PORT:-18082}"
@@ -35,11 +32,23 @@ vault_service_runtime_dir() {
     "$VAULT_SERVICE")
       printf '%s\n' "$VAULT_RUNTIME_DIR"
       ;;
-    "$PERF_PRIMARY_VAULT_SERVICE")
-      printf '%s\n' "$PERF_PRIMARY_VAULT_RUNTIME_DIR"
-      ;;
     "$PERF_VAULT_SERVICE")
       printf '%s\n' "$PERF_VAULT_RUNTIME_DIR"
+      ;;
+    *)
+      echo "Unknown Vault service: $1" >&2
+      return 1
+      ;;
+  esac
+}
+
+vault_service_storage_dir() {
+  case "$1" in
+    "$VAULT_SERVICE")
+      printf '%s\n' "$VAULT_RUNTIME_STORAGE_DIR"
+      ;;
+    "$PERF_VAULT_SERVICE")
+      printf '%s\n' "$PERF_VAULT_RUNTIME_STORAGE_DIR"
       ;;
     *)
       echo "Unknown Vault service: $1" >&2
@@ -52,9 +61,6 @@ vault_service_host_addr() {
   case "$1" in
     "$VAULT_SERVICE")
       printf '%s\n' "$VAULT_HOST_ADDR"
-      ;;
-    "$PERF_PRIMARY_VAULT_SERVICE")
-      printf '%s\n' "$PERF_PRIMARY_VAULT_HOST_ADDR"
       ;;
     "$PERF_VAULT_SERVICE")
       printf '%s\n' "$PERF_VAULT_HOST_ADDR"
@@ -70,9 +76,6 @@ vault_service_root_token_file() {
   case "$1" in
     "$VAULT_SERVICE")
       printf '%s\n' "$ROOT_TOKEN_FILE"
-      ;;
-    "$PERF_PRIMARY_VAULT_SERVICE")
-      printf '%s\n' "$PERF_PRIMARY_ROOT_TOKEN_FILE"
       ;;
     "$PERF_VAULT_SERVICE")
       printf '%s\n' "$PERF_ROOT_TOKEN_FILE"

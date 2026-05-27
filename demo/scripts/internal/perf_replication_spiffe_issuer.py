@@ -23,9 +23,9 @@ DEMO_ROOT = Path("/workspace/demo")
 RUNTIME_DIR = DEMO_ROOT / "runtime"
 TLS_DIR = DEMO_ROOT / "config" / "tls"
 
-PRIMARY_ADDR = "https://hashibank-vault-perf-primary:8200"
+PRIMARY_ADDR = "https://hashibank-vault:8200"
 REPLICA_ADDR = "https://hashibank-vault-perf:8200"
-PRIMARY_CLUSTER_ADDR = "https://hashibank-vault-perf-primary:8200"
+PRIMARY_CLUSTER_ADDR = "https://hashibank-vault:8200"
 REPLICA_CLUSTER_ADDR = "https://hashibank-vault-perf:8200"
 CA_CERT = TLS_DIR / "hashibank-root-ca.crt"
 

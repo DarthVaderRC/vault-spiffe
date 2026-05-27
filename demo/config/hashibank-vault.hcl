@@ -14,6 +14,7 @@ listener "tcp" {
   tls_require_and_verify_client_cert = false
 }
 
-storage "file" {
-  path = "/vault/file"
+storage "raft" {
+  path = "/vault/raft"
+  node_id = "hashibank-vault"
 }
