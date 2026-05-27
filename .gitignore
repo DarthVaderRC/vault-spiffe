@@ -7,3 +7,5 @@ content/*
 requirements.md
 spec.md
 playgrounds/customer-deck-presentation.html
+spiffe-engine-trust-bundle.sh
+key.pem
