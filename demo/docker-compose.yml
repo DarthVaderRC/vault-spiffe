@@ -43,6 +43,65 @@ services:
       - ./runtime/hashibank-vault-perf/raft:/vault/raft
       - ./runtime:/vault/runtime
 
+  spire-server:
+    image: ${SPIRE_SERVER_IMAGE:-ghcr.io/spiffe/spire-server:1.12.5}
+    user: "0:0"
+    depends_on:
+      - hashibank-vault
+    command:
+      - -config
+      - /opt/spire/conf/server.conf
+    environment:
+      VAULT_ADDR: https://hashibank-vault:8200
+      VAULT_CACERT: /opt/spire/certs/hashibank-root-ca.crt
+      VAULT_APPROLE_ID: ${SPIRE_VAULT_APPROLE_ID:-}
+      VAULT_APPROLE_SECRET_ID: ${SPIRE_VAULT_APPROLE_SECRET_ID:-}
+    ports:
+      - "${SPIRE_BUNDLE_ENDPOINT_HOST_PORT:-18443}:8443"
+    volumes:
+      - ./config/spire/server.conf:/opt/spire/conf/server.conf:ro
+      - ./config/tls:/opt/spire/certs:ro
+      - ./runtime/spire/server/data:/var/lib/spire/server/.data
+
+  spire-agent:
+    image: ${SPIRE_AGENT_IMAGE:-ghcr.io/spiffe/spire-agent:1.12.5}
+    user: "0:0"
+    pid: "host"
+    depends_on:
+      - spire-server
+    command:
+      - -config
+      - /opt/spire/conf/agent.conf
+    volumes:
+      - ./runtime/spire/agent/agent.conf:/opt/spire/conf/agent.conf:ro
+      - ./runtime/spire/agent/bootstrap:/opt/spire/bootstrap:ro
+      - ./runtime/spire/agent/data:/var/lib/spire/agent/.data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - spire-agent-socket:/run/spire/agent/public
+
+  hashibank-spire-client:
+    build:
+      context: .
+      dockerfile: tools/Dockerfile
+      args:
+        VAULT_CLI_IMAGE: ${VAULT_ENTERPRISE_IMAGE:-hashicorp/vault-enterprise:2.0.0-ent}
+        SPIRE_SERVER_IMAGE: ${SPIRE_SERVER_IMAGE:-ghcr.io/spiffe/spire-server:1.12.5}
+        SPIRE_AGENT_IMAGE: ${SPIRE_AGENT_IMAGE:-ghcr.io/spiffe/spire-agent:1.12.5}
+    user: "10001:10001"
+    pid: "host"
+    depends_on:
+      - spire-agent
+    labels:
+      org.hashibank.spire-role: vault-spire-client
+    command:
+      - bash
+      - -lc
+      - sleep infinity
+    working_dir: /workspace/demo
+    volumes:
+      - ../:/workspace
+      - spire-agent-socket:/run/spire/agent/public
+
   postgres-hashibank:
     image: postgres:16-alpine
     environment:
@@ -84,6 +143,8 @@ services:
       dockerfile: tools/Dockerfile
       args:
         VAULT_CLI_IMAGE: ${VAULT_ENTERPRISE_IMAGE:-hashicorp/vault-enterprise:2.0.0-ent}
+        SPIRE_SERVER_IMAGE: ${SPIRE_SERVER_IMAGE:-ghcr.io/spiffe/spire-server:1.12.5}
+        SPIRE_AGENT_IMAGE: ${SPIRE_AGENT_IMAGE:-ghcr.io/spiffe/spire-agent:1.12.5}
     command:
       - bash
       - -lc
@@ -91,3 +152,6 @@ services:
     working_dir: /workspace/demo
     volumes:
       - ../:/workspace
+
+volumes:
+  spire-agent-socket:
