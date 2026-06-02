@@ -1,7 +1,7 @@
 
 # HashiBank Vault SPIFFE demo
 
-This demo runs on a single **HashiBank Vault Cluster** backed by Vault Enterprise 2.0. The cluster hosts:
+This demo runs on a single **HashiBank Vault Cluster** backed by Vault Enterprise 2.0, plus an optional SPIRE overlay for integration testing. The base cluster hosts:
 
 - AppRole for machine authentication
 - PKI for X.509 issuance
@@ -15,6 +15,7 @@ Supporting services in the lab:
 - **`hashibank-fraud-web`** for the fraud analyst page reveal
 - **`hashibank-assistant`** for the banker assistant page reveal
 - **`demo-tools`** for the presenter-driven checkpoint scripts
+- **`spire-server`**, **`spire-agent`**, and **`hashibank-spire-client`** when the optional SPIRE overlay is enabled
 
 For a presenter-oriented runbook with talk track and highlight cues, use [DEMO_WALKTHROUGH.md](./DEMO_WALKTHROUGH.md).
 
@@ -39,6 +40,16 @@ For a presenter-oriented runbook with talk track and highlight cues, use [DEMO_W
    - discovery and JWKS retrieval from the SPIFFE engine
    - downstream validation with OIDC-style patterns
    - reveal of masked banker context
+
+4. **SPIRE JWT-SVID to Vault auth** *(optional overlay)*
+   - SPIRE agent fetch of a JWT-SVID for `spiffe://spire.hashibank.demo/workloads/vault-spire-client`
+   - Vault SPIFFE JWT auth configured from the SPIRE federation bundle
+   - KV read proving the returned Vault token is policy-scoped
+
+5. **Vault as SPIRE upstream authority** *(optional overlay)*
+   - Vault PKI root exposed at `spire-pki/`
+   - SPIRE server configured with `upstreamauthority_vault`
+   - SPIRE workload SVID chain validated back to the Vault-managed root
 
 ## Demo architecture
 ![HashiCorp Vault + SPIFFE](../media/demo-setup.png)
@@ -67,6 +78,7 @@ hashibank-vault  -> https://localhost:18200
 fraud web        -> http://localhost:18081
 assistant web    -> http://localhost:18082
 perf replica     -> https://localhost:19200 (optional workflow)
+spire bundle     -> https://localhost:18443 (optional SPIRE overlay)
 ```
 
 Override with:
@@ -108,6 +120,29 @@ The review output is split into logical sections, pauses between sections until 
 - SPIFFE engine configuration and SPIFFE roles
 - SPIFFE auth configuration and SPIFFE auth roles
 - payments API KV secrets
+
+## Bootstrapping the SPIRE extension
+
+From `demo/`:
+
+```bash
+./scripts/bootstrap-spire.sh
+```
+
+This opt-in script:
+
+1. reuses the base `./scripts/bootstrap.sh` environment
+2. starts `spire-server`, `spire-agent`, and `hashibank-spire-client`
+3. configures Vault PKI and AppRole resources for SPIRE `upstreamauthority_vault`
+4. publishes a SPIRE federation bundle endpoint on `https://localhost:18443`
+5. configures `auth/spire-jwt/` in Vault to trust the SPIRE federation bundle
+6. registers the `vault-spire-client` workload and verifies it can fetch SPIRE SVIDs
+
+Current boundary:
+
+- The intended **SPIRE X.509-SVID -> Vault SPIFFE auth** path is **not** enabled in the shipped overlay.
+- Vault still only authenticated the SPIRE-issued X.509-SVID when the SPIFFE auth mount trusted the **SPIRE issuing intermediate** directly, not the SPIRE federation bundle/root.
+- That workaround is intentionally omitted because it diverges from the intended "Vault fetches the SPIRE trust bundle" model and is awkward for rotation.
 
 ## Running the demo flows
 
@@ -180,6 +215,41 @@ http://localhost:18082/
 
 The page renders from prepared checkpoint state and does not mint or validate a JWT on page load.
 
+### SPIRE JWT-SVID -> Vault SPIFFE auth
+
+```bash
+./scripts/demo-spire-jwt.sh
+```
+
+Run this after `./scripts/bootstrap-spire.sh`.
+
+This flow shows:
+
+- the raw SPIRE agent `fetch jwt` response for the `vault-spire-client` workload
+- decoded JWT claims for `spiffe://spire.hashibank.demo/workloads/vault-spire-client`
+- Vault `auth/spire-jwt/config` and `auth/spire-jwt/role/vault-spire-client`
+- a successful Vault login using `Authorization: Bearer <jwt-svid>`
+- a KV read at `kv/spire/demo`
+
+This is the supported SPIRE -> Vault auth path in the local demo because it matches the documented SPIRE federation-bundle and Vault SPIFFE JWT auth model.
+
+### Vault as SPIRE upstream authority
+
+```bash
+./scripts/demo-spire-upstreamauthority.sh
+```
+
+Run this after `./scripts/bootstrap-spire.sh`.
+
+This flow shows:
+
+- the Vault `spire-pki/cert/ca` root certificate used by the SPIRE upstream authority plugin
+- a SPIRE-issued X.509-SVID fetched from the Workload API
+- the issuing intermediate in the SPIRE workload chain
+- `openssl verify` proving the workload SVID chains back to the Vault-managed root certificate
+
+This proves the supported **Vault -> SPIRE upstream authority** integration for X.509 CA delegation. It is intentionally not presented as JWT key publication because `upstreamauthority_vault` does not publish JWT signing keys.
+
 ## Performance replica SPIFFE issuer experiment
 
 To test how the SPIFFE secrets engine behaves on a performance replica when `jwt_issuer_url` is omitted from the mount configuration, run:
@@ -228,6 +298,7 @@ Bootstrap writes ephemeral material under `demo/runtime/`, including:
 - rendered SPIFFE template files
 - the generated payments certificate and key
 - the performance replica issuer experiment JSON result and raw JWT when that workflow is run
+- SPIRE runtime state, join token, bootstrap bundle, and generated SVID inspection files when the SPIRE overlay is run
 
 `demo/runtime/` is git-ignored and removed by `./scripts/teardown.sh`. Generated TLS files under `demo/config/tls/` are also treated as disposable local artifacts.
 
@@ -236,6 +307,10 @@ Bootstrap writes ephemeral material under `demo/runtime/`, including:
 - The X.509 flow uses **Vault PKI** with a SPIFFE URI SAN. It is not claiming native X.509 SVID issuance from the SPIFFE secrets engine.
 - The JWT flow uses **Vault SPIFFE secrets** for JWT-SVID minting and **Vault SPIFFE auth** for login on the same cluster.
 - The assistant flow validates the Vault-minted JWT through discovery and JWKS rather than Vault-native auth.
+- The SPIRE overlay uses a separate trust domain, **`spire.hashibank.demo`**, so Vault-native and SPIRE-issued identities do not publish conflicting trust bundles for the same domain.
+- The supported SPIRE -> Vault auth path in this repo is **JWT-SVID -> `auth/spire-jwt/`**.
+- The repo does **not** ship a SPIRE X.509-SVID -> Vault auth demo because the clean bundle/root-trust model still did not authenticate successfully in this lab.
+- The only working X.509 workaround we found was to trust the **SPIRE issuing intermediate** directly, which we intentionally do not ship.
 
 ## Tear down
 
@@ -247,3 +322,4 @@ Bootstrap writes ephemeral material under `demo/runtime/`, including:
 
 - If a local port is already in use, override the host port environment variables before bootstrapping.
 - If the pinned Enterprise image tag does not start with your license, set `VAULT_ENTERPRISE_IMAGE` to another compatible Enterprise 2.0 tag and rerun bootstrap.
+- If a SPIRE demo script reports that the overlay is not bootstrapped, run `./scripts/bootstrap-spire.sh` first.
