@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 360" role="img" aria-labelledby="title desc">
+  <title id="title">SPIRE JWT-SVID to Vault auth workflow</title>
+  <desc id="desc">Three-stage anchor visual for the supported SPIRE JWT flow: fetch a SPIRE-issued JWT-SVID, authenticate to Vault through auth/spire-jwt, and prove the policy-scoped token with a KV read.</desc>
+  <defs>
+    <style type="text/css"><![CDATA[
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+      @media (prefers-reduced-motion: reduce) {
+        svg animate, svg animateMotion, svg animateTransform { display: none; }
+      }
+      .eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 2px; font-weight: 700; fill: #6f6f6f; }
+      .title { font-family: 'IBM Plex Sans', sans-serif; font-size: 28px; font-weight: 600; fill: #161616; }
+      .box-eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1.6px; font-weight: 700; fill: #ffffff; opacity: 0.92; }
+      .box-title { font-family: 'IBM Plex Sans', sans-serif; font-size: 17px; font-weight: 600; fill: #ffffff; }
+      .box-body { font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; fill: #ffffff; }
+      .box-mono { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: #ffffff; }
+      .note-title { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1.4px; font-weight: 700; fill: #525252; }
+      .note-body { font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; fill: #525252; }
+      .caption { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1.5px; fill: #6f6f6f; }
+    ]]></style>
+    <pattern id="dg-dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="0.6" fill="#161616" opacity="0.05"/>
+    </pattern>
+    <filter id="dg-shadow" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.08"/>
+    </filter>
+    <marker id="dg-arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="7" markerHeight="7" orient="auto">
+      <polyline points="0,0 6,3.5 0,7" fill="none" stroke="#6f6f6f" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="16" y="16" width="1068" height="328" rx="18" fill="#fdfdfd"/>
+  <rect x="16" y="16" width="1068" height="328" rx="18" fill="url(#dg-dots)"/>
+  <rect x="16" y="16" width="1068" height="328" rx="18" fill="none" stroke="#e0e0e0"/>
+
+  <text x="48" y="58" class="eyebrow">WORKFLOW 04</text>
+  <text x="48" y="92" class="title">SPIRE JWT-SVID - Vault auth</text>
+  <line x1="48" y1="108" x2="132" y2="108" stroke="#da1e28" stroke-width="3"/>
+
+  <rect x="770" y="34" width="280" height="96" rx="12" fill="#f4f4f4"/>
+  <text x="792" y="58" class="note-title">BOOTSTRAP TRUST</text>
+  <text x="792" y="79" class="note-body">auth/spire-jwt/ -&gt; https://spire-server:8443</text>
+  <text x="792" y="98" class="note-body">trust_domain = spire.hashibank.demo</text>
+  <text x="792" y="117" class="note-body">Setup at bootstrap, not during the live flow.</text>
+
+  <path d="M275,194 C332,194 353,194 440,194" fill="none" stroke="#6f6f6f" stroke-width="1.5" marker-end="url(#dg-arrow)"/>
+  <path d="M660,194 C718,194 739,194 825,194" fill="none" stroke="#6f6f6f" stroke-width="1.5" marker-end="url(#dg-arrow)"/>
+
+  <g filter="url(#dg-shadow)">
+    <rect x="55" y="144" width="220" height="102" rx="10" fill="#ff832b">
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="3.7s" repeatCount="indefinite" begin="0s"/>
+    </rect>
+  </g>
+  <text x="165" y="170" text-anchor="middle" class="box-eyebrow">STAGE 01</text>
+  <text x="165" y="198" text-anchor="middle" class="box-title">SPIRE JWT fetch</text>
+  <text x="165" y="216" text-anchor="middle" class="box-mono">spire-agent api fetch jwt</text>
+  <text x="165" y="232" text-anchor="middle" class="box-body">aud = vault-spire-demo</text>
+  <text x="165" y="246" text-anchor="middle" class="box-body">workloads/vault-spire-client</text>
+
+  <g filter="url(#dg-shadow)">
+    <rect x="440" y="144" width="220" height="102" rx="10" fill="#1192e8">
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="3.7s" repeatCount="indefinite" begin="0.5s"/>
+    </rect>
+  </g>
+  <text x="550" y="170" text-anchor="middle" class="box-eyebrow">STAGE 02</text>
+  <text x="550" y="198" text-anchor="middle" class="box-title">Vault spire-jwt login</text>
+  <text x="550" y="216" text-anchor="middle" class="box-mono">auth/spire-jwt/login</text>
+  <text x="550" y="232" text-anchor="middle" class="box-body">role = vault-spire-client</text>
+  <text x="550" y="246" text-anchor="middle" class="box-body">Vault accepts the SPIRE-issued JWT</text>
+
+  <g filter="url(#dg-shadow)">
+    <rect x="825" y="144" width="220" height="102" rx="10" fill="#24a148">
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="3.7s" repeatCount="indefinite" begin="1s"/>
+    </rect>
+  </g>
+  <text x="935" y="170" text-anchor="middle" class="box-eyebrow">STAGE 03</text>
+  <text x="935" y="198" text-anchor="middle" class="box-title">KV proof</text>
+  <text x="935" y="216" text-anchor="middle" class="box-mono">kv/spire/demo</text>
+  <text x="935" y="232" text-anchor="middle" class="box-body">policy-scoped token</text>
+  <text x="935" y="246" text-anchor="middle" class="box-body">trust domain confirmation</text>
+
+  <circle r="4" fill="#ff832b" opacity="0">
+    <animateMotion dur="6.2s" repeatCount="indefinite" path="M275,194 C332,194 353,194 440,194 C718,194 739,194 825,194"/>
+    <animate attributeName="fill" values="#ff832b;#1192e8;#24a148;#ff832b" keyTimes="0;0.35;0.75;1" dur="6.2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0.95;0.95;0" keyTimes="0;0.06;0.92;1" dur="6.2s" repeatCount="indefinite"/>
+  </circle>
+
+  <rect x="252" y="304" width="596" height="18" rx="9" fill="#f4f4f4"/>
+  <text x="550" y="317" text-anchor="middle" class="caption">VAULT ACCEPTS THE SPIRE-ISSUED JWT-SVID THROUGH THE FEDERATION-BUNDLE BRIDGE, THEN RETURNS A POLICY-SCOPED TOKEN.</text>
+</svg>

@@ -36,13 +36,8 @@ For a presenter-oriented talk track, use [demo/DEMO_WALKTHROUGH.md](./demo/DEMO_
 
 ## Demo architecture
 
-![HashiCorp Vault + SPIFFE demo architecture](./media/demo-setup.png)
-*HashiCorp Vault + SPIFFE demo architecture*
-
-### Optional SPIRE Setup for the demo
-
-![SPIRE Setup](./media/spire-setup.svg)
-
+![Vault trust plane and optional SPIRE overlay](./media/demo-architecture-anchor.svg)
+*Anchor visual of the base Vault trust plane*
 
 ## Repository layout
 
@@ -167,6 +162,8 @@ Each scenario script runs the checkpoints in order and pauses between them until
 ./scripts/demo-x509-payments.sh
 ```
 
+![Payments API X.509 workflow](./media/workflow-payments-x509.svg)
+
 This flow runs through AppRole login, PKI issuance, SPIFFE X.509 auth, and the KV read. It shows:
 
 - The AppRole login response with `client_token` and metadata
@@ -180,6 +177,8 @@ This flow runs through AppRole login, PKI issuance, SPIFFE X.509 auth, and the K
 ```bash
 ./scripts/demo-jwt-fraud.sh
 ```
+
+![Fraud Ops JWT workflow](./media/workflow-fraud-jwt.svg)
 
 This flow runs through AppRole login, JWT minting, SPIFFE JWT auth, database credential retrieval, and the final page reveal. It shows:
 
@@ -202,6 +201,8 @@ The page renders from prepared checkpoint state. It does not rerun Vault login o
 ```bash
 ./scripts/demo-agentic-oidc.sh
 ```
+
+![Relationship assistant OIDC workflow](./media/workflow-assistant-oidc.svg)
 
 This flow runs through AppRole login, JWT minting, discovery and JWKS retrieval, JWT validation, and the final page reveal. It shows:
 
@@ -226,6 +227,8 @@ The page renders from prepared checkpoint state. It does not mint or validate a 
 
 Run this after `./scripts/bootstrap-spire.sh`.
 
+![SPIRE JWT-SVID to Vault auth workflow](./media/workflow-spire-jwt-auth.svg)
+
 This flow shows:
 
 - The raw SPIRE agent `fetch jwt` response for the `vault-spire-client` workload
@@ -244,6 +247,8 @@ This is the supported SPIRE-to-Vault auth path in the local demo because it matc
 
 Run this after `./scripts/bootstrap-spire.sh`.
 
+![Vault as SPIRE upstream authority workflow](./media/workflow-spire-upstreamauthority.svg)
+
 This flow shows:
 
 - The Vault `spire-pki/cert/ca` root certificate used by the SPIRE upstream authority plugin
@@ -260,6 +265,8 @@ To test how the SPIFFE secrets engine behaves on a performance replica when `jwt
 ```bash
 ./scripts/perf-repl-spiffe-issuer.sh
 ```
+
+![Performance replica issuer experiment workflow](./media/workflow-perf-replica-issuer.svg)
 
 This opt-in workflow:
 
