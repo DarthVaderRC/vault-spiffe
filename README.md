@@ -37,6 +37,12 @@ For a presenter-oriented talk track, use [demo/DEMO_WALKTHROUGH.md](./demo/DEMO_
 ## Demo architecture
 
 ![HashiCorp Vault + SPIFFE demo architecture](./media/demo-setup.png)
+*HashiCorp Vault + SPIFFE demo architecture*
+
+### Optional SPIRE Setup for the demo
+
+![SPIRE Setup](./media/spire-setup.svg)
+
 
 ## Repository layout
 
