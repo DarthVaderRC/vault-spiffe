@@ -6,7 +6,7 @@ This repository contains a runnable local HashiBank demo that shows how **HashiC
 
 For a presenter-oriented talk track, use [demo/DEMO_WALKTHROUGH.md](./demo/DEMO_WALKTHROUGH.md).
 
-## What the demo proves
+## The demo includes following scenarios
 
 1. **Payments API X.509**
    - AppRole login to the HashiBank Vault cluster
@@ -25,11 +25,11 @@ For a presenter-oriented talk track, use [demo/DEMO_WALKTHROUGH.md](./demo/DEMO_
    - Discovery and JWKS retrieval from the SPIFFE engine
    - Downstream validation with OIDC-style patterns
    - Reveal of masked banker context
-1. **SPIRE JWT-SVID to Vault auth** *(optional overlay)*
+1. **SPIRE JWT-SVID to Vault auth** *(optional)*
    - SPIRE agent fetch of a JWT-SVID for `spiffe://spire.hashibank.demo/workloads/vault-spire-client`
    - Vault SPIFFE JWT auth configured from the SPIRE federation bundle
    - KV read proving the returned Vault token is policy-scoped
-1. **Vault as SPIRE upstream authority** *(optional overlay)*
+1. **Vault as SPIRE upstream authority** *(optional)*
    - Vault PKI root exposed at `spire-pki/`
    - SPIRE server configured with `upstreamauthority_vault`
    - SPIRE workload SVID chain validated back to the Vault-managed root
@@ -248,7 +248,7 @@ This flow shows:
 
 This proves the supported **Vault to SPIRE upstream authority** integration for X.509 CA delegation. It is intentionally not presented as JWT key publication because `upstreamauthority_vault` does not publish JWT signing keys.
 
-## Performance replica SPIFFE issuer experiment
+## SPIFFE engine behaviour on performance replica
 
 To test how the SPIFFE secrets engine behaves on a performance replica when `jwt_issuer_url` is omitted from the mount configuration, run:
 
@@ -265,17 +265,14 @@ This opt-in workflow:
 1. Authenticates to the replica through a replicated AppRole
 1. Mints a JWT-SVID from the replica and decodes its `iss` claim
 
-The primary demo cluster now uses integrated storage, so the replication experiment attaches directly to the same `hashibank-vault` environment that the demo scenarios use.
-
 The script prints:
 
-- Replication status for the primary and replica
 - The replicated SPIFFE mount config read from both clusters
 - The OIDC discovery documents for the new mount on both clusters
 - The observed `iss` value from the JWT minted on the performance replica
 - Whether that `iss` matches the primary cluster API address or the replica cluster API address
 
-Saved artifacts:
+Artifacts will be saved at:
 
 - `demo/runtime/generated/perf-repl-spiffe-issuer-result.json`
 - `demo/runtime/generated/perf-repl-spiffe-issuer.jwt`
@@ -305,7 +302,7 @@ Bootstrap writes ephemeral material under `demo/runtime/`, including:
 - The X.509 flow uses **Vault PKI** with a SPIFFE URI SAN. It does not claim native X.509 SVID issuance from the SPIFFE secrets engine.
 - The JWT flow uses **Vault SPIFFE secrets** for JWT-SVID minting and **Vault SPIFFE auth** for login on the same cluster.
 - The assistant flow validates the Vault-minted JWT through discovery and JWKS rather than Vault-native auth.
-- The SPIRE overlay uses a separate trust domain, `spire.hashibank.demo`, so Vault-native and SPIRE-issued identities do not publish conflicting trust bundles for the same domain.
+- The SPIRE setup uses a separate trust domain, `spire.hashibank.demo`, so Vault-native and SPIRE-issued identities do not publish conflicting trust bundles for the same domain.
 - The supported SPIRE-to-Vault auth path in this repo is **JWT-SVID to `auth/spire-jwt/`**.
 - The repo does not ship a SPIRE X.509-SVID-to-Vault auth demo because the clean bundle and root trust model did not authenticate successfully in this lab.
 - The only working X.509 workaround we found was to trust the SPIRE issuing intermediate directly, which we intentionally do not ship.
