@@ -6,7 +6,7 @@ This repository contains a runnable local HashiBank demo that shows how **HashiC
 
 For a presenter-oriented talk track, use [demo/DEMO_WALKTHROUGH.md](./demo/DEMO_WALKTHROUGH.md).
 
-## The demo includes following scenarios
+## The demo includes the following scenarios
 
 1. **Payments API X.509**
    - AppRole login to the HashiBank Vault cluster
