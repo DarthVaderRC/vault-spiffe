@@ -306,14 +306,6 @@ Bootstrap writes ephemeral material under `demo/runtime/`, including:
 - The repo does not ship a SPIRE X.509-SVID-to-Vault auth demo because the clean bundle and root trust model did not authenticate successfully in this lab.
 - The only working X.509 workaround we found was to trust the SPIRE issuing intermediate directly, which we intentionally do not ship.
 
-## Interactive artifacts
-
-Open the generated HTML tool locally:
-
-```bash
-open playgrounds/repo-code-explorer.html
-```
-
 ## Tear down
 
 ```bash
