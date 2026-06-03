@@ -259,7 +259,7 @@ review_bootstrap() {
 
 bootstrap_demo() {
   mkdir -p \
-    "$VAULT_RUNTIME_DIR/file" \
+    "$VAULT_RUNTIME_STORAGE_DIR" \
     "$APPROLE_DIR" \
     "$TRUST_DIR" \
     "$TEMPLATE_DIR" \

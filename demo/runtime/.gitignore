@@ -1,2 +1,9 @@
-*
+
+approle/
+checkpoints/
+generated/
+hashibank-vault/
+postgres/
+trust/
+spire/
 !.gitignore

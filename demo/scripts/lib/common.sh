@@ -12,7 +12,33 @@ VAULT_SERVICE="hashibank-vault"
 VAULT_HOST_PORT="${HASHIBANK_VAULT_HOST_PORT:-18200}"
 VAULT_HOST_ADDR="https://localhost:${VAULT_HOST_PORT}"
 VAULT_RUNTIME_DIR="$RUNTIME_DIR/hashibank-vault"
+VAULT_RUNTIME_STORAGE_DIR="$VAULT_RUNTIME_DIR/raft"
 ROOT_TOKEN_FILE="$VAULT_RUNTIME_DIR/root-token"
+PERF_VAULT_SERVICE="hashibank-vault-perf"
+PERF_VAULT_HOST_PORT="${HASHIBANK_VAULT_PERF_HOST_PORT:-19200}"
+PERF_VAULT_HOST_ADDR="https://localhost:${PERF_VAULT_HOST_PORT}"
+PERF_VAULT_RUNTIME_DIR="$RUNTIME_DIR/hashibank-vault-perf"
+PERF_VAULT_RUNTIME_STORAGE_DIR="$PERF_VAULT_RUNTIME_DIR/raft"
+PERF_ROOT_TOKEN_FILE="$PERF_VAULT_RUNTIME_DIR/root-token"
+SPIRE_SERVER_SERVICE="spire-server"
+SPIRE_AGENT_SERVICE="spire-agent"
+SPIRE_CLIENT_SERVICE="hashibank-spire-client"
+SPIRE_BUNDLE_ENDPOINT_HOST_PORT="${SPIRE_BUNDLE_ENDPOINT_HOST_PORT:-18443}"
+SPIRE_BUNDLE_ENDPOINT_HOST_ADDR="https://localhost:${SPIRE_BUNDLE_ENDPOINT_HOST_PORT}"
+SPIRE_RUNTIME_DIR="$RUNTIME_DIR/spire"
+SPIRE_SERVER_RUNTIME_DIR="$SPIRE_RUNTIME_DIR/server"
+SPIRE_SERVER_DATA_DIR="$SPIRE_SERVER_RUNTIME_DIR/data"
+SPIRE_SERVER_SOCKET_DIR="$SPIRE_SERVER_RUNTIME_DIR/socket"
+SPIRE_SERVER_ENV_FILE="$SPIRE_SERVER_RUNTIME_DIR/server.env"
+SPIRE_SERVER_SOCKET_PATH="/run/spire/server/private/api.sock"
+SPIRE_AGENT_RUNTIME_DIR="$SPIRE_RUNTIME_DIR/agent"
+SPIRE_AGENT_DATA_DIR="$SPIRE_AGENT_RUNTIME_DIR/data"
+SPIRE_AGENT_BOOTSTRAP_DIR="$SPIRE_AGENT_RUNTIME_DIR/bootstrap"
+SPIRE_AGENT_BOOTSTRAP_BUNDLE_FILE="$SPIRE_AGENT_BOOTSTRAP_DIR/bootstrap-trust-bundle.pem"
+SPIRE_AGENT_SOCKET_DIR="$SPIRE_AGENT_RUNTIME_DIR/socket"
+SPIRE_AGENT_CONFIG_FILE="$SPIRE_AGENT_RUNTIME_DIR/agent.conf"
+SPIRE_AGENT_SOCKET_PATH="/run/spire/agent/public/api.sock"
+SPIRE_CLIENT_UID="10001"
 FRAUD_WEB_PORT="${HASHIBANK_FRAUD_WEB_PORT:-18081}"
 ASSISTANT_WEB_PORT="${HASHIBANK_ASSISTANT_WEB_PORT:-18082}"
 
@@ -20,10 +46,132 @@ compose() {
   docker compose -f "$COMPOSE_FILE" "$@"
 }
 
+write_policies() {
+  local root_token="$1"
+  shift
+
+  for policy in "$@"; do
+    vault_exec "VAULT_TOKEN=$root_token vault policy write ${policy%.hcl} /vault/policies/${policy}.hcl" >/dev/null
+  done
+}
+
+vault_service_runtime_dir() {
+  case "$1" in
+    "$VAULT_SERVICE")
+      printf '%s\n' "$VAULT_RUNTIME_DIR"
+      ;;
+    "$PERF_VAULT_SERVICE")
+      printf '%s\n' "$PERF_VAULT_RUNTIME_DIR"
+      ;;
+    *)
+      echo "Unknown Vault service: $1" >&2
+      return 1
+      ;;
+  esac
+}
+
+vault_service_storage_dir() {
+  case "$1" in
+    "$VAULT_SERVICE")
+      printf '%s\n' "$VAULT_RUNTIME_STORAGE_DIR"
+      ;;
+    "$PERF_VAULT_SERVICE")
+      printf '%s\n' "$PERF_VAULT_RUNTIME_STORAGE_DIR"
+      ;;
+    *)
+      echo "Unknown Vault service: $1" >&2
+      return 1
+      ;;
+  esac
+}
+
+vault_service_host_addr() {
+  case "$1" in
+    "$VAULT_SERVICE")
+      printf '%s\n' "$VAULT_HOST_ADDR"
+      ;;
+    "$PERF_VAULT_SERVICE")
+      printf '%s\n' "$PERF_VAULT_HOST_ADDR"
+      ;;
+    *)
+      echo "Unknown Vault service: $1" >&2
+      return 1
+      ;;
+  esac
+}
+
+vault_service_root_token_file() {
+  case "$1" in
+    "$VAULT_SERVICE")
+      printf '%s\n' "$ROOT_TOKEN_FILE"
+      ;;
+    "$PERF_VAULT_SERVICE")
+      printf '%s\n' "$PERF_ROOT_TOKEN_FILE"
+      ;;
+    *)
+      echo "Unknown Vault service: $1" >&2
+      return 1
+      ;;
+  esac
+}
+
+vault_exec_service() {
+  local service="$1"
+  shift
+
+  compose exec -T "$service" sh -lc "export VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/config/tls/hashibank-root-ca.crt; $*"
+}
+
 vault_exec() {
   # Run Vault CLI commands inside the service container so they use container-local
   # DNS names and the demo CA bundle instead of host networking assumptions.
-  compose exec -T "$VAULT_SERVICE" sh -lc "export VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/config/tls/hashibank-root-ca.crt; $*"
+  vault_exec_service "$VAULT_SERVICE" "$@"
+}
+
+spire_server_exec() {
+  compose exec -T "$SPIRE_SERVER_SERVICE" /opt/spire/bin/spire-server "$@"
+}
+
+spire_agent_exec() {
+  compose exec -T "$SPIRE_AGENT_SERVICE" /opt/spire/bin/spire-agent "$@"
+}
+
+spire_client_exec() {
+  compose exec -T "$SPIRE_CLIENT_SERVICE" bash -lc "$*"
+}
+
+wait_for_vault_service() {
+  local service="$1"
+
+  wait_for_https "$service" "$(vault_service_host_addr "$service")"
+}
+
+wait_for_spire_server_api() {
+  for _ in $(seq 1 60); do
+    if spire_server_exec bundle show -socketPath "$SPIRE_SERVER_SOCKET_PATH" -output json >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Timed out waiting for SPIRE server API" >&2
+  return 1
+}
+
+wait_for_spire_agent_api() {
+  for _ in $(seq 1 60); do
+    if spire_agent_exec healthcheck -socketPath "$SPIRE_AGENT_SOCKET_PATH" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Timed out waiting for SPIRE agent API" >&2
+  return 1
+}
+
+wait_for_spire_bundle_endpoint() {
+  wait_for_https "$SPIRE_SERVER_SERVICE bundle endpoint" "$SPIRE_BUNDLE_ENDPOINT_HOST_ADDR"
 }
 
 wait_for_https() {
@@ -72,6 +220,130 @@ read_status_value() {
   local field="$1"
 
   vault_exec "vault status" | awk -v target="$field" '$1 == target {print $2}'
+}
+
+read_vault_status_value() {
+  local service="$1"
+  local field="$2"
+
+  vault_exec_service "$service" "vault status" | awk -v target="$field" '$1 == target {print $2}'
+}
+
+extract_init_value() {
+  local file="$1"
+  local key="$2"
+
+  awk -F': ' -v target="$key" '$1 == target {print $2}' "$file"
+}
+
+ensure_demo_tls_root_ca() {
+  if [[ -f "$TLS_DIR/hashibank-root-ca.crt" && -f "$TLS_DIR/hashibank-root-ca.key" ]]; then
+    return 0
+  fi
+
+  echo "Generating HashiBank demo root CA..."
+  openssl genrsa -out "$TLS_DIR/hashibank-root-ca.key" 4096 >/dev/null 2>&1
+  openssl req -x509 -new -nodes \
+    -key "$TLS_DIR/hashibank-root-ca.key" \
+    -sha256 \
+    -days 365 \
+    -subj "/CN=HashiBank Demo Root CA" \
+    -out "$TLS_DIR/hashibank-root-ca.crt" >/dev/null 2>&1
+}
+
+ensure_demo_server_cert() {
+  local name="$1"
+  local service_name="$2"
+  local key_file="$TLS_DIR/$name.key"
+  local csr_file="$TLS_DIR/$name.csr"
+  local cert_file="$TLS_DIR/$name.crt"
+  local ext_file="$TLS_DIR/$name.ext"
+
+  if [[ -f "$cert_file" && -f "$key_file" ]]; then
+    return 0
+  fi
+
+  cat >"$ext_file" <<EOF
+subjectAltName=DNS:${service_name},DNS:localhost,IP:127.0.0.1
+extendedKeyUsage=serverAuth
+EOF
+
+  openssl genrsa -out "$key_file" 2048 >/dev/null 2>&1
+  openssl req -new -key "$key_file" -subj "/CN=${service_name}" -out "$csr_file" >/dev/null 2>&1
+  openssl x509 -req \
+    -in "$csr_file" \
+    -CA "$TLS_DIR/hashibank-root-ca.crt" \
+    -CAkey "$TLS_DIR/hashibank-root-ca.key" \
+    -CAcreateserial \
+    -out "$cert_file" \
+    -days 365 \
+    -sha256 \
+    -extfile "$ext_file" >/dev/null 2>&1
+
+  rm -f "$csr_file" "$ext_file"
+}
+
+ensure_hashibank_demo_bootstrap() {
+  local root_token
+
+  if [[ -f "$ROOT_TOKEN_FILE" && -f "$VAULT_RUNTIME_DIR/init.txt" ]]; then
+    compose up -d --build "$VAULT_SERVICE" postgres-hashibank demo-tools >/dev/null 2>&1
+    wait_for_vault_service "$VAULT_SERVICE"
+    wait_for_postgres
+    initialise_and_unseal_vault_service "$VAULT_SERVICE"
+
+    root_token=$(<"$ROOT_TOKEN_FILE")
+    if vault_exec "VAULT_TOKEN=$root_token vault read spiffe/config >/dev/null 2>&1"; then
+      return 0
+    fi
+  fi
+
+  echo "Bootstrapping hashibank-vault for the demo environment..."
+  HASHIBANK_DEMO_NO_PAUSE=1 "$SCRIPTS_DIR/bootstrap.sh"
+}
+
+require_spire_overlay_bootstrap() {
+  if [[ -f "$ROOT_TOKEN_FILE" && -f "$SPIRE_AGENT_CONFIG_FILE" && -f "$SPIRE_AGENT_BOOTSTRAP_BUNDLE_FILE" ]]; then
+    return 0
+  fi
+
+  echo "SPIRE overlay is not bootstrapped. Run ./scripts/bootstrap-spire.sh first." >&2
+  return 1
+}
+
+initialise_and_unseal_vault_service() {
+  local service="$1"
+  local runtime_dir
+  local init_file
+  local root_token_file
+  local initialized
+  local sealed
+  local unseal_key
+  local root_token
+
+  runtime_dir=$(vault_service_runtime_dir "$service")
+  init_file="$runtime_dir/init.txt"
+  root_token_file=$(vault_service_root_token_file "$service")
+  mkdir -p "$runtime_dir"
+
+  initialized=$(read_vault_status_value "$service" "Initialized" || true)
+  if [[ "$initialized" != "true" ]]; then
+    echo "Initializing $service..."
+    vault_exec_service "$service" "vault operator init -key-shares=1 -key-threshold=1" >"$init_file"
+  elif [[ ! -f "$init_file" ]]; then
+    echo "Expected $init_file for already initialized $service" >&2
+    return 1
+  fi
+
+  unseal_key=$(extract_init_value "$init_file" "Unseal Key 1")
+  root_token=$(extract_init_value "$init_file" "Initial Root Token")
+  printf '%s' "$root_token" >"$root_token_file"
+
+  sealed=$(read_vault_status_value "$service" "Sealed" || true)
+  if [[ "$sealed" == "true" ]]; then
+    echo "Unsealing $service..."
+    vault_exec_service "$service" "vault operator unseal $unseal_key" >/dev/null
+  fi
 }
 
 show_heading() {

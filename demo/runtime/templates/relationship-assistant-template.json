@@ -1,0 +1,1 @@
+{"sub":"spiffe://hashibank.demo/{{identity.entity.aliases.auth_approle_84711bb4.custom_metadata.spiffe_path}}","bank":"HashiBank"}

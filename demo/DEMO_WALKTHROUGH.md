@@ -16,7 +16,12 @@ Use this guide during the live HashiBank Vault + SPIFFE demo. It gives you the o
 3. Keep two browser tabs ready:
    - `http://localhost:18081/`
    - `http://localhost:18082/`
-4. Before the first scenario, review the setup live:
+4. If you plan to show the SPIRE extension, bootstrap it before the SPIRE scenarios:
+
+   ```bash
+   ./scripts/bootstrap-spire.sh
+   ```
+5. Before the first scenario, review the setup live:
 
    ```bash
    ./scripts/bootstrap.sh review
@@ -40,6 +45,8 @@ Run the scenarios in this order:
 1. **Payments API X.509** shows standards-based X.509 identity and policy mapping.
 2. **Fraud Ops JWT-SVID** shows short-lived identity turning into live banking data.
 3. **Relationship assistant OIDC** shows the same identity model working with a downstream service that validates JWTs through discovery and JWKS.
+4. **SPIRE JWT-SVID to Vault auth** shows Vault accepting a SPIRE-issued JWT-SVID through a dedicated auth mount.
+5. **Vault as SPIRE upstream authority** shows SPIRE workload certificates chaining back to a Vault-managed root.
 
 ## Explain the demo architecture
 
@@ -51,6 +58,10 @@ Use this before the first scenario:
 - Auth methods are components which verify the identity and assign policies for accessing secrets
 - In the context of SPIFFE, the same cluster issues SPIFFE IDs, validates the SVIDs, and maps that identity to policies via Vault roles.
 - The trust domain is `hashibank.demo` environment
+- The optional SPIRE overlay uses a separate trust domain, `spire.hashibank.demo`, to avoid pretending Vault-native and SPIRE-issued identities share one bundle.
+- In the SPIRE overlay, Vault consumes the SPIRE federation bundle for **JWT-SVID** auth and acts as the upstream authority for **SPIRE server X.509 CA** material.
+- We are **not** claiming a shipped SPIRE X.509-SVID -> Vault auth path in this repo because the clean bundle/root-trust model still did not authenticate successfully in this lab.
+- The only working X.509 workaround was trusting the SPIRE issuing intermediate directly, which we are deliberately not presenting as the supported model.
 
 *I have built a shell wrapper over that runs the commands necessary to demonstrate the flows.*
 
@@ -202,13 +213,105 @@ HashiBank wants an internal banker assistant that can carry portable workload id
 - Discovery and JWKS make the JWT usable by downstream services that speak standard OIDC-style validation patterns.
 - SPIFFE gives a portable workload identifier that fits real banking use cases.
 
+## Scenario 4: SPIRE JWT-SVID -> Vault SPIFFE auth
+
+### Business context
+
+HashiBank wants to show the line between Vault-native SPIFFE and SPIRE-issued workload identity. A platform team already runs SPIRE for workload issuance and wants Vault to accept that identity without teaching the workload a second auth scheme.
+
+### Steps
+
+1. Run the scenario script:
+
+   ```bash
+   ./scripts/demo-spire-jwt.sh
+   ```
+
+2. Key call outs:
+   - SPIRE fetch:
+      - `spire-agent api fetch jwt`
+      - decoded claims
+      - `sub`
+         ```text
+         spiffe://spire.hashibank.demo/workloads/vault-spire-client
+         ```
+      - `aud`
+         ```text
+         vault-spire-demo
+         ```
+   - Vault trust configuration:
+      - `auth/spire-jwt/config`
+      - `endpoint_url`
+         ```text
+         https://spire-server:8443
+         ```
+      - `trust_domain`
+         ```text
+         spire.hashibank.demo
+         ```
+   - Vault auth result:
+      - `auth/spire-jwt/role/vault-spire-client`
+      - policy mapping result
+   - Final proof:
+      - `vault kv get kv/spire/demo`
+
+### Explanation
+
+- The workload identity comes from SPIRE, not from Vault.
+- Vault trusts the SPIRE federation bundle on `auth/spire-jwt/`.
+- The workload presents its SPIRE-issued JWT-SVID to Vault through the SPIFFE auth method and receives a Vault token scoped by `workload_id_patterns`.
+- The KV read is the business proof that the identity exchange became authorization, not just token inspection.
+
+### Key takeaway
+
+- Vault can accept a SPIRE-issued JWT-SVID through documented SPIFFE federation bundle integration.
+- This is the cleanest supported SPIRE -> Vault auth path in the local demo.
+
+## Scenario 5: Vault as SPIRE upstream authority
+
+### Business context
+
+HashiBank also wants to show that Vault can stay the root of trust even when SPIRE handles workload issuance. The question is not "does Vault replace SPIRE?" The question is "can Vault remain the enterprise trust anchor while SPIRE issues the workload certificates?"
+
+### Steps
+
+1. Run the scenario script:
+
+   ```bash
+   ./scripts/demo-spire-upstreamauthority.sh
+   ```
+
+2. Key call outs:
+   - Vault root:
+      - `vault read spire-pki/cert/ca`
+      - root certificate subject
+   - SPIRE workload certificate:
+      - `spire-agent api fetch x509`
+      - leaf SPIFFE ID
+      - issuing intermediate subject
+   - Final proof:
+      - `openssl verify -CAfile runtime/spire/agent/bootstrap/bootstrap-trust-bundle.pem -untrusted runtime/generated/spire-upstreamauthority/intermediate.pem runtime/generated/spire-upstreamauthority/leaf.pem`
+
+### Explanation
+
+- `upstreamauthority_vault` lets SPIRE server obtain its X.509 CA material from Vault PKI.
+- The workload still gets its SVID from SPIRE agent and SPIRE server.
+- The chain validation shows that the SPIRE workload certificate roots back to the certificate stored in Vault `spire-pki/`.
+
+### Key takeaway
+
+- Vault can act as the upstream X.509 trust anchor for SPIRE without pretending to be the workload attestor.
+- This is an X.509 CA delegation story, not a JWT signing-key publication story.
+
 ## Closing..
 
-Use this after the third scenario:
+Use this after the final scenario:
 
 - HashiBank uses Vault as the trust and policy plane, not as a generic token vending machine.
 - SPIFFE IDs sit above Vault entities and aliases as the portable workload identifier layer.
-- The demo shows three concrete outcomes: payments API policy mapping, fraud data access, and banker assistant validation.
+- The base demo shows three Vault-native outcomes: payments API policy mapping, fraud data access, and banker assistant validation.
+- The SPIRE overlay adds two integration outcomes: Vault accepting a SPIRE JWT-SVID and Vault acting as SPIRE's upstream X.509 root.
+- The important boundary is still the same: Vault and SPIRE are complementary when you need attestation and external workload issuance.
 
 ## Reset after the demo
 
