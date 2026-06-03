@@ -8,6 +8,8 @@ For a presenter-oriented talk track, use [demo/DEMO_WALKTHROUGH.md](./demo/DEMO_
 
 ## The demo includes the following scenarios
 
+> **Note:** The first two scenarios use different identity forms on purpose. The payments flow uses a PKI-issued X.509 certificate with a SPIFFE URI SAN to demonstrate Vault's certificate-based auth path. The fraud flow uses a JWT-SVID to demonstrate Vault's JWT minting and SPIFFE JWT auth path, then exchanges that identity for dynamic database credentials. This split is for feature coverage in the demo. It is not a claim that payments should always use X.509 or that fraud workloads should always use JWT.
+
 1. **Payments API X.509**
    - AppRole login to the HashiBank Vault cluster
    - PKI-issued certificate with `spiffe://hashibank.demo/payments/api`
