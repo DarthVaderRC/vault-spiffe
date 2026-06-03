@@ -45,7 +45,6 @@ For a presenter-oriented talk track, use [demo/DEMO_WALKTHROUGH.md](./demo/DEMO_
 | `README.md` | Repository overview, setup, and operator runbook |
 | `demo/DEMO_WALKTHROUGH.md` | Live-demo talk track and highlight cues |
 | `demo/` | Docker Compose lab, bootstrap scripts, Python scenario runners, and web apps |
-| `playgrounds/repo-code-explorer.html` | Interactive code-map explorer for the repository architecture |
 
 ## Prerequisites
 
