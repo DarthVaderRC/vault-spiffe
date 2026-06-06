@@ -3,7 +3,9 @@ approle/
 checkpoints/
 generated/
 hashibank-vault/
+kind/
 postgres/
+templates/
 trust/
 spire/
 !.gitignore

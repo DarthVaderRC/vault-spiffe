@@ -7,6 +7,8 @@ FROM ${SPIRE_AGENT_IMAGE} AS spire-agent-cli
 
 FROM python:3.12-slim
 
+ARG KUBECTL_VERSION=v1.31.2
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     curl \
@@ -14,6 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+  && chmod +x /usr/local/bin/kubectl
 
 COPY --from=vault-cli /bin/vault /usr/local/bin/vault
 COPY --from=spire-server-cli /opt/spire/bin/spire-server /usr/local/bin/spire-server

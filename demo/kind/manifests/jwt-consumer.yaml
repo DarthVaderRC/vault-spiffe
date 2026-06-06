@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jwt-consumer
+  namespace: assistants
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jwt-consumer
+  template:
+    metadata:
+      labels:
+        app: jwt-consumer
+    spec:
+      containers:
+        - name: app
+          image: vault-spiffe-jwt-consumer:local
+          imagePullPolicy: Never
+          env:
+            - name: PORT
+              value: "8080"
+            - name: VAULT_DISCOVERY_URL
+              value: https://host.docker.internal:18200/v1/spiffe/.well-known/openid-configuration
+            - name: EXPECTED_AUDIENCE
+              value: relationship-insights-api
+            - name: ALLOWED_SPIFFE_SUBJECT
+              value: spiffe://hashibank.demo/ns/assistants/sa/relationship-assistant
+            - name: REQUIRED_APPLICATION
+              value: relationship-assistant
+            - name: REQUIRED_LINE_OF_BUSINESS
+              value: relationship-banking
+            - name: REQUIRED_CUSTOMER_DATA_DOMAIN
+              value: masked-assistant-context
+            - name: ROOT_CA_FILE
+              value: /var/run/hashibank/roots/hashibank-root-ca.crt
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: roots
+              mountPath: /var/run/hashibank/roots
+              readOnly: true
+      volumes:
+        - name: roots
+          configMap:
+            name: hashibank-root-ca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jwt-consumer
+  namespace: assistants
+spec:
+  selector:
+    app: jwt-consumer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -6,19 +6,21 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/lib/common.sh"
 
 ACTION="${1:-run}"
+FRAUD_WEB_SCENARIO="spire-jwt"
 
 run_internal() {
   local command="$1"
 
   spire_client_exec \
-    "export PYTHONPATH=/workspace/demo/python; python /workspace/demo/scripts/internal/spire_jwt_demo.py '$command'"
+    "export PYTHONPATH=/workspace/demo/python FRAUD_WEB_URL=http://localhost:${FRAUD_WEB_PORT}/; python /workspace/demo/scripts/internal/spire_jwt_demo.py '$command'"
 }
 
 run_flow() {
   local steps=(
     fetch-jwt
     spiffe-jwt-auth
-    kv-read
+    db-creds
+    final-reveal
   )
   local idx
 
@@ -43,13 +45,23 @@ esac
 
 require_spire_overlay_bootstrap
 
-compose up -d --build "$VAULT_SERVICE" "$SPIRE_SERVER_SERVICE" "$SPIRE_AGENT_SERVICE" "$SPIRE_CLIENT_SERVICE" >/dev/null 2>&1
+compose up -d --build "$VAULT_SERVICE" "$SPIRE_SERVER_SERVICE" "$SPIRE_AGENT_SERVICE" "$SPIRE_CLIENT_SERVICE" postgres-hashibank demo-tools >/dev/null 2>&1
 wait_for_vault_service "$VAULT_SERVICE"
 wait_for_spire_bundle_endpoint
 wait_for_spire_agent_api
+wait_for_postgres
+
+if [[ "$ACTION" == "run" ]]; then
+  HASHIBANK_DEMO_SCENARIO="$FRAUD_WEB_SCENARIO" compose up -d --build --force-recreate hashibank-fraud-web >/dev/null 2>&1
+  wait_for_http "hashibank-fraud-web" "http://localhost:${FRAUD_WEB_PORT}/healthz"
+fi
 
 if [[ "$ACTION" == "run" ]]; then
   run_flow
 else
   run_internal "$ACTION"
+fi
+
+if [[ "$ACTION" == "run" ]]; then
+  curl --silent --show-error --fail "http://localhost:${FRAUD_WEB_PORT}/api/demo" >/dev/null
 fi

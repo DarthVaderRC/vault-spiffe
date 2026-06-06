@@ -11,6 +11,9 @@ ROOT_CA_FILE="$TLS_DIR/hashibank-root-ca.crt"
 VAULT_SERVICE="hashibank-vault"
 VAULT_HOST_PORT="${HASHIBANK_VAULT_HOST_PORT:-18200}"
 VAULT_HOST_ADDR="https://localhost:${VAULT_HOST_PORT}"
+VAULT_PUBLIC_HOSTNAME="${VAULT_PUBLIC_HOSTNAME:-vault.demo.internal}"
+VAULT_PUBLIC_ADDR="https://${VAULT_PUBLIC_HOSTNAME}:${VAULT_HOST_PORT}"
+VAULT_DOCKER_ADDR="https://host.docker.internal:${VAULT_HOST_PORT}"
 VAULT_RUNTIME_DIR="$RUNTIME_DIR/hashibank-vault"
 VAULT_RUNTIME_STORAGE_DIR="$VAULT_RUNTIME_DIR/raft"
 ROOT_TOKEN_FILE="$VAULT_RUNTIME_DIR/root-token"
@@ -41,6 +44,22 @@ SPIRE_AGENT_SOCKET_PATH="/run/spire/agent/public/api.sock"
 SPIRE_CLIENT_UID="10001"
 FRAUD_WEB_PORT="${HASHIBANK_FRAUD_WEB_PORT:-18081}"
 ASSISTANT_WEB_PORT="${HASHIBANK_ASSISTANT_WEB_PORT:-18082}"
+KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-vault-spiffe}"
+KIND_API_PORT="${KIND_API_PORT:-16443}"
+KIND_RUNTIME_DIR="$RUNTIME_DIR/kind"
+KUBECONFIG_HOST_FILE="$KIND_RUNTIME_DIR/kubeconfig"
+KUBECONFIG_DOCKER_FILE="$KIND_RUNTIME_DIR/kubeconfig-docker"
+K8S_VAULT_NAMESPACE="${K8S_VAULT_NAMESPACE:-vault-system}"
+K8S_PAYMENTS_NAMESPACE="${K8S_PAYMENTS_NAMESPACE:-payments}"
+K8S_ASSISTANTS_NAMESPACE="${K8S_ASSISTANTS_NAMESPACE:-assistants}"
+K8S_REVIEWER_SERVICE_ACCOUNT="${K8S_REVIEWER_SERVICE_ACCOUNT:-vault-auth-reviewer}"
+K8S_PAYMENTS_SERVICE_ACCOUNT="${K8S_PAYMENTS_SERVICE_ACCOUNT:-payments-api}"
+K8S_MTLS_BACKEND_SERVICE_ACCOUNT="${K8S_MTLS_BACKEND_SERVICE_ACCOUNT:-mtls-backend}"
+K8S_ASSISTANT_SERVICE_ACCOUNT="${K8S_ASSISTANT_SERVICE_ACCOUNT:-relationship-assistant}"
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
 
 compose() {
   docker compose -f "$COMPOSE_FILE" "$@"
@@ -171,7 +190,15 @@ wait_for_spire_agent_api() {
 }
 
 wait_for_spire_bundle_endpoint() {
-  wait_for_https "$SPIRE_SERVER_SERVICE bundle endpoint" "$SPIRE_BUNDLE_ENDPOINT_HOST_ADDR"
+  for _ in $(seq 1 60); do
+    if curl --silent --fail --cacert "$ROOT_CA_FILE" "$SPIRE_BUNDLE_ENDPOINT_HOST_ADDR/" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Timed out waiting for $SPIRE_SERVER_SERVICE bundle endpoint at $SPIRE_BUNDLE_ENDPOINT_HOST_ADDR" >&2
+  return 1
 }
 
 wait_for_https() {
@@ -253,23 +280,31 @@ ensure_demo_tls_root_ca() {
 
 ensure_demo_server_cert() {
   local name="$1"
-  local service_name="$2"
+  local common_name="$2"
+  shift 2
   local key_file="$TLS_DIR/$name.key"
   local csr_file="$TLS_DIR/$name.csr"
   local cert_file="$TLS_DIR/$name.crt"
   local ext_file="$TLS_DIR/$name.ext"
+  local san_entries=("DNS:${common_name}")
+  local san_csv
 
-  if [[ -f "$cert_file" && -f "$key_file" ]]; then
+  if (($#)); then
+    san_entries+=("$@")
+  fi
+
+  if [[ -f "$cert_file" && -f "$key_file" ]] && cert_has_san_entries "$cert_file" "${san_entries[@]}"; then
     return 0
   fi
 
+  san_csv=$(IFS=,; printf '%s' "${san_entries[*]}")
   cat >"$ext_file" <<EOF
-subjectAltName=DNS:${service_name},DNS:localhost,IP:127.0.0.1
+subjectAltName=${san_csv}
 extendedKeyUsage=serverAuth
 EOF
 
   openssl genrsa -out "$key_file" 2048 >/dev/null 2>&1
-  openssl req -new -key "$key_file" -subj "/CN=${service_name}" -out "$csr_file" >/dev/null 2>&1
+  openssl req -new -key "$key_file" -subj "/CN=${common_name}" -out "$csr_file" >/dev/null 2>&1
   openssl x509 -req \
     -in "$csr_file" \
     -CA "$TLS_DIR/hashibank-root-ca.crt" \
@@ -283,13 +318,49 @@ EOF
   rm -f "$csr_file" "$ext_file"
 }
 
+cert_has_san_entries() {
+  local cert_file="$1"
+  shift
+  local text
+
+  if [[ ! -f "$cert_file" ]]; then
+    return 1
+  fi
+
+  text=$(openssl x509 -in "$cert_file" -noout -text 2>/dev/null || true)
+  if [[ -z "$text" ]]; then
+    return 1
+  fi
+
+  for san_entry in "$@"; do
+    case "$san_entry" in
+      DNS:*)
+        if ! grep -Fq "${san_entry}" <<<"$text"; then
+          return 1
+        fi
+        ;;
+      IP:*)
+        if ! grep -Fq "IP Address:${san_entry#IP:}" <<<"$text"; then
+          return 1
+        fi
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
+
+  return 0
+}
+
 ensure_hashibank_demo_bootstrap() {
   local root_token
 
-  if [[ -f "$ROOT_TOKEN_FILE" && -f "$VAULT_RUNTIME_DIR/init.txt" ]]; then
-    compose up -d --build "$VAULT_SERVICE" postgres-hashibank demo-tools >/dev/null 2>&1
+  if [[ -f "$ROOT_TOKEN_FILE" && -f "$VAULT_RUNTIME_DIR/init.txt" && -f "$KUBECONFIG_HOST_FILE" ]] \
+    && command_exists kind \
+    && kind get clusters 2>/dev/null | grep -Fxq "$KIND_CLUSTER_NAME"; then
+    compose up -d --build "$VAULT_SERVICE" demo-tools >/dev/null 2>&1
     wait_for_vault_service "$VAULT_SERVICE"
-    wait_for_postgres
     initialise_and_unseal_vault_service "$VAULT_SERVICE"
 
     root_token=$(<"$ROOT_TOKEN_FILE")
@@ -307,7 +378,7 @@ require_spire_overlay_bootstrap() {
     return 0
   fi
 
-  echo "SPIRE overlay is not bootstrapped. Run ./scripts/bootstrap-spire.sh first." >&2
+  echo "SPIRE overlay is not bootstrapped. Run ./scripts/bootstrap.sh spire first." >&2
   return 1
 }
 

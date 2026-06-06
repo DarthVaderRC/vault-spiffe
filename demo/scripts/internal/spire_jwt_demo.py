@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from hashibank_demo.checkpoints import (
@@ -15,6 +17,7 @@ from hashibank_demo.checkpoints import (
 )
 from hashibank_demo.transcript import (
     print_highlights,
+    print_info,
     print_reset,
     print_status,
     print_step_footer,
@@ -32,6 +35,7 @@ from hashibank_demo.vault_client import (
 SCENARIO = "spire-jwt"
 PERSONA = "vault-spire-client"
 SCRIPT_NAME = "demo-spire-jwt.sh"
+PAGE_URL = os.environ.get("FRAUD_WEB_URL", "http://localhost:18081/")
 
 DEMO_ROOT = Path("/workspace/demo")
 RUNTIME_DIR = DEMO_ROOT / "runtime"
@@ -43,13 +47,27 @@ SPIRE_AGENT_SOCKET_PATH = "/run/spire/agent/public/api.sock"
 SPIFFE_AUTH_PATH = "spire-jwt"
 SPIFFE_ROLE = "vault-spire-client"
 SPIFFE_AUDIENCE = "vault-spire-demo"
-SPIRE_KV_PATH = "kv/data/spire/demo"
+DB_CREDS_PATH = "database/creds/fraud-readonly"
+POSTGRES_HOST = "postgres-hashibank"
+POSTGRES_PORT = 5432
+POSTGRES_DB = "hashibank"
 
 STEPS = [
     DemoStep("fetch-jwt", "JWT-SVID fetch", "identity-artifact"),
     DemoStep("spiffe-jwt-auth", "SPIFFE JWT auth", "trust-decision"),
-    DemoStep("kv-read", "KV read", "business-proof"),
+    DemoStep("db-creds", "DB creds fetch", "business-proof"),
+    DemoStep("final-reveal", "Fraud data reveal", "final-reveal-prep"),
 ]
+
+
+def lease_has_expired(state: dict, step_id: str, lease_duration: int | None, *, leeway_seconds: int = 30) -> bool:
+    if lease_duration is None:
+        return False
+    completed_at = state["steps"][step_id].get("completed_at")
+    if not completed_at:
+        return False
+    issued_at = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    return datetime.now(timezone.utc) >= issued_at + timedelta(seconds=int(lease_duration) - leeway_seconds)
 
 
 def _extract_spire_jwt(fetch_output: str) -> str:
@@ -91,7 +109,7 @@ PY""",
     print_highlights(
         f"sub = {claims['sub']}",
         f"aud = {claims.get('aud')}",
-        f"exp = {claims.get('exp')}",
+        f"iss = {claims.get('iss')}",
     )
     summary = {
         "spiffe_subject": claims["sub"],
@@ -103,18 +121,24 @@ PY""",
         STEPS,
         "fetch-jwt",
         summary=summary,
-        artifacts={"jwt_token": jwt_token},
+        artifacts={
+            "jwt_token": jwt_token,
+            "spiffe_subject": summary["spiffe_subject"],
+            "issuer": summary["issuer"],
+        },
     )
     return summary
 
 
 def trust_decision_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "spiffe-jwt-auth")
-    jwt_token = state["steps"]["fetch-jwt"]["artifacts"]["jwt_token"]
-    if jwt_has_expired(jwt_token, leeway_seconds=30):
+    jwt_artifacts = state["steps"]["fetch-jwt"]["artifacts"]
+    if jwt_has_expired(jwt_artifacts["jwt_token"], leeway_seconds=30):
         raise RuntimeError("Saved JWT-SVID expired; rerun ./scripts/demo-spire-jwt.sh")
 
     root_token = read_text(ROOT_TOKEN_FILE)
+    jwt_token = jwt_artifacts["jwt_token"]
+
     run_vault_command(
         "Vault SPIRE JWT auth configuration",
         f"vault read auth/{SPIFFE_AUTH_PATH}/config",
@@ -137,13 +161,14 @@ def trust_decision_step(state: dict) -> dict:
         role=SPIFFE_ROLE,
         svid=jwt_token,
     )
+    vault_display_name = access_auth.get("display_name") or access_auth.get("metadata", {}).get("role_name")
     print_highlights(
-        f"auth.display_name = {access_auth.get('display_name')}",
+        f"auth.display_name = {vault_display_name}",
         f"auth.policies = {', '.join(access_auth.get('policies', []))}",
-        "Vault accepted the SPIRE-issued JWT-SVID using the SPIRE federation bundle.",
+        "Vault accepts the SPIRE-issued JWT-SVID and returns a token scoped for database brokering.",
     )
     summary = {
-        "vault_display_name": access_auth.get("display_name"),
+        "vault_display_name": vault_display_name,
         "vault_policies": access_auth.get("policies", []),
     }
     record_step(
@@ -151,36 +176,136 @@ def trust_decision_step(state: dict) -> dict:
         STEPS,
         "spiffe-jwt-auth",
         summary=summary,
-        artifacts={"client_token": access_auth["client_token"]},
+        artifacts={
+            "client_token": access_auth["client_token"],
+            "vault_display_name": summary["vault_display_name"],
+            "vault_policies": summary["vault_policies"],
+        },
     )
     return summary
 
 
-def business_proof_step(state: dict) -> dict:
-    require_step_dependencies(state, STEPS, "kv-read")
-    client_token = state["steps"]["spiffe-jwt-auth"]["artifacts"]["client_token"]
+def db_creds_step(state: dict) -> dict:
+    require_step_dependencies(state, STEPS, "db-creds")
+    root_token = read_text(ROOT_TOKEN_FILE)
+    access_token = state["steps"]["spiffe-jwt-auth"]["artifacts"]["client_token"]
 
     run_vault_command(
-        "Vault SPIRE demo KV read",
-        "vault kv get kv/spire/demo",
-        token=client_token,
+        "Fraud readonly database role",
+        "vault read database/roles/fraud-readonly",
+        token=root_token,
     )
-    response = read_vault_path(VAULT_ADDR, str(CA_CERT), client_token, SPIRE_KV_PATH)
-    data = response["data"]["data"]
+    run_vault_command(
+        "Dynamic Postgres credentials from Vault",
+        f"vault read {DB_CREDS_PATH}",
+        token=access_token,
+    )
+    response = read_vault_path(VAULT_ADDR, str(CA_CERT), access_token, DB_CREDS_PATH)
     summary = {
-        "message": data["message"],
-        "trust_domain": data["trust_domain"],
+        "db_username": response["data"]["username"],
+        "db_lease_id": response.get("lease_id"),
+        "db_lease_duration": response.get("lease_duration"),
     }
     print_highlights(
-        f"trust_domain = {summary['trust_domain']}",
-        f"message = {summary['message']}",
+        f"db_username = {summary['db_username']}",
+        f"lease_id = {summary['db_lease_id']}",
+        f"lease_duration = {summary['db_lease_duration']} seconds",
     )
     record_step(
         state,
         STEPS,
-        "kv-read",
+        "db-creds",
         summary=summary,
-        artifacts=summary,
+        artifacts={
+            "db_username": summary["db_username"],
+            "db_password": response["data"]["password"],
+            "db_lease_id": summary["db_lease_id"],
+            "db_lease_duration": summary["db_lease_duration"],
+        },
+    )
+    return summary
+
+
+def final_reveal_step(state: dict) -> dict:
+    require_step_dependencies(state, STEPS, "final-reveal")
+    jwt_artifacts = state["steps"]["fetch-jwt"]["artifacts"]
+    access_artifacts = state["steps"]["spiffe-jwt-auth"]["artifacts"]
+    db_artifacts = state["steps"]["db-creds"]["artifacts"]
+    if lease_has_expired(state, "db-creds", db_artifacts["db_lease_duration"]):
+        raise RuntimeError("Saved DB credentials expired; rerun ./scripts/demo-spire-jwt.sh")
+
+    rows_output = run_text_command(
+        "Fraud alerts query with Vault-issued Postgres credentials",
+        f"""
+        python - <<'PY'
+import json
+import os
+from psycopg import connect
+from psycopg.rows import dict_row
+
+with connect(
+    host={json.dumps(POSTGRES_HOST)},
+    port={POSTGRES_PORT},
+    dbname={json.dumps(POSTGRES_DB)},
+    user=os.environ["DB_USERNAME"],
+    password=os.environ["DB_PASSWORD"],
+    sslmode="disable",
+    row_factory=dict_row,
+) as conn:
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            SELECT account_mask, severity, status, amount, merchant, event_time
+            FROM fraud_alerts
+            ORDER BY event_time DESC
+            LIMIT 5
+            '''
+        )
+        rows = []
+        for row in cur.fetchall():
+            item = dict(row)
+            item["amount"] = float(item["amount"])
+            item["event_time"] = item["event_time"].isoformat()
+            rows.append(item)
+        print(json.dumps(rows, indent=2))
+PY
+        """,
+        env={
+            "DB_USERNAME": db_artifacts["db_username"],
+            "DB_PASSWORD": db_artifacts["db_password"],
+        },
+        show_command=False,
+    )
+    rows = json.loads(rows_output)
+
+    payload = {
+        "persona": PERSONA,
+        "spiffe_subject": jwt_artifacts["spiffe_subject"],
+        "issuer": jwt_artifacts["issuer"],
+        "vault_display_name": access_artifacts["vault_display_name"],
+        "vault_policies": access_artifacts["vault_policies"],
+        "db_username": db_artifacts["db_username"],
+        "db_lease_id": db_artifacts["db_lease_id"],
+        "db_lease_duration": db_artifacts["db_lease_duration"],
+        "rows": rows,
+    }
+    print_highlights(
+        f"Rendered rows = {len(rows)}",
+        f"Fraud dashboard URL = {PAGE_URL}",
+        "SPIRE identity becomes a Vault token, then a short-lived Postgres login, then visible fraud data.",
+    )
+    print_info(f"Open {PAGE_URL}")
+    summary = {
+        "page_ready": True,
+        "page_url": PAGE_URL,
+        "rendered_rows": len(rows),
+    }
+    record_step(
+        state,
+        STEPS,
+        "final-reveal",
+        summary=summary,
+        prepared_payload=payload,
     )
     return summary
 
@@ -190,8 +315,10 @@ def execute_step(state: dict, step_id: str) -> dict:
         return identity_artifact_step(state)
     if step_id == "spiffe-jwt-auth":
         return trust_decision_step(state)
-    if step_id == "kv-read":
-        return business_proof_step(state)
+    if step_id == "db-creds":
+        return db_creds_step(state)
+    if step_id == "final-reveal":
+        return final_reveal_step(state)
     raise RuntimeError(f"Unsupported SPIRE JWT checkpoint: {step_id}")
 
 
@@ -208,12 +335,12 @@ def main() -> None:
     try:
         if args.command == "reset":
             reset_state(SCENARIO)
-            print_reset(SCENARIO, "runtime/checkpoints/spire-jwt.json")
+            print_reset(SCENARIO, "runtime/checkpoints/spire-jwt.json", extra_lines=[f"Page URL: {PAGE_URL}"])
             return
 
         if args.command == "status":
             state = load_state(SCENARIO, PERSONA, STEPS)
-            print_status(state, SCRIPT_NAME)
+            print_status(state, SCRIPT_NAME, extra_lines=[f"Page URL: {PAGE_URL}"])
             return
 
         if args.command == "all":
@@ -222,13 +349,13 @@ def main() -> None:
             for step in STEPS:
                 execute_step(state, step.id)
                 save_state(SCENARIO, state)
-                print_step_footer(state, SCRIPT_NAME)
+                print_step_footer(state, SCRIPT_NAME, extra_lines=[f"Page URL: {PAGE_URL}"] if step.id == "final-reveal" else None)
             return
 
         state = load_state(SCENARIO, PERSONA, STEPS)
         execute_step(state, args.command)
         save_state(SCENARIO, state)
-        print_step_footer(state, SCRIPT_NAME)
+        print_step_footer(state, SCRIPT_NAME, extra_lines=[f"Page URL: {PAGE_URL}"] if args.command == "final-reveal" else None)
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({"scenario": SCENARIO, "command": args.command, "error": str(exc)}, indent=2), file=sys.stderr)
         raise SystemExit(1) from exc

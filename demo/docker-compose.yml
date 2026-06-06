@@ -54,8 +54,7 @@ services:
     environment:
       VAULT_ADDR: https://hashibank-vault:8200
       VAULT_CACERT: /opt/spire/certs/hashibank-root-ca.crt
-      VAULT_APPROLE_ID: ${SPIRE_VAULT_APPROLE_ID:-}
-      VAULT_APPROLE_SECRET_ID: ${SPIRE_VAULT_APPROLE_SECRET_ID:-}
+      VAULT_TOKEN: ${SPIRE_VAULT_TOKEN:-}
     ports:
       - "${SPIRE_BUNDLE_ENDPOINT_HOST_PORT:-18443}:8443"
     volumes:
@@ -119,6 +118,8 @@ services:
     depends_on:
       - hashibank-vault
       - postgres-hashibank
+    environment:
+      HASHIBANK_DEMO_SCENARIO: ${HASHIBANK_DEMO_SCENARIO:-fraud}
     ports:
       - "${HASHIBANK_FRAUD_WEB_PORT:-18081}:8080"
     volumes:
@@ -131,6 +132,8 @@ services:
       dockerfile: apps/hashibank-assistant/Dockerfile
     depends_on:
       - hashibank-vault
+    environment:
+      HASHIBANK_DEMO_SCENARIO: ${HASHIBANK_DEMO_SCENARIO:-k8s-jwt}
     ports:
       - "${HASHIBANK_ASSISTANT_WEB_PORT:-18082}:8080"
     volumes:
