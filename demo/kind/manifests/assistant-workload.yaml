@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: relationship-assistant
+  namespace: assistants
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: relationship-assistant
+  namespace: assistants
+  labels:
+    app: relationship-assistant
+spec:
+  serviceAccountName: relationship-assistant
+  automountServiceAccountToken: true
+  containers:
+    - name: workload
+      image: vault-spiffe-demo-tools:local
+      imagePullPolicy: Never
+      command: ["bash", "-lc", "sleep infinity"]
+      volumeMounts:
+        - name: roots
+          mountPath: /var/run/hashibank/roots
+          readOnly: true
+  volumes:
+    - name: roots
+      configMap:
+        name: hashibank-root-ca

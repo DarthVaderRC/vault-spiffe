@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import os
+
 from flask import Flask, jsonify, render_template_string
 
 from hashibank_demo.checkpoints import load_saved_state, ordered_steps
 
 app = Flask(__name__)
 
-SCENARIO = "fraud"
+SCENARIO = os.environ.get("HASHIBANK_DEMO_SCENARIO", "fraud")
 PAGE_TEMPLATE = """
 <!doctype html>
 <html lang="en">

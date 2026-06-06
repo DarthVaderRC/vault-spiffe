@@ -1,3 +1,3 @@
-path "kv/data/spire/demo" {
+path "database/creds/fraud-readonly" {
   capabilities = ["read"]
 }
