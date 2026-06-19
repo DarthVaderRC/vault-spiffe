@@ -199,6 +199,25 @@ This flow runs through Kubernetes auth, JWT minting, discovery and JWKS retrieva
 - The masked relationship insights and next-best action rendered at `http://localhost:18082/`
 - The public issuer value (`vault.demo.internal`) and the local host-bridge reachability pattern used by the lab
 
+### Just-in-time dynamic database credentials
+
+```bash
+./scripts/demo-k8s-jit.sh
+```
+
+This flow reuses the same Kubernetes-verified `relationship-assistant` identity
+and brokers a short-lived Postgres credential from Vault's database secrets
+engine. It shows:
+
+- The Kubernetes auth login that returns a token carrying the
+  `identity-assistant-k8s-jit` policy
+- A brand-new dynamic Postgres user minted on demand from
+  `database/creds/assistant-insights-readonly` with a 5-minute lease
+- A read-only query against the `customer_relationships` table running as that
+  ephemeral user
+- Lease revocation that immediately makes the credential stop working, proving
+  just-in-time, revocable access
+
 ### SPIRE JWT-SVID to Vault auth and dynamic DB access
 
 ```bash
