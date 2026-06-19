@@ -24,7 +24,7 @@ from hashibank_demo.transcript import (
     run_text_command,
     run_vault_command,
 )
-from hashibank_demo.vault_client import read_text, read_vault_path
+from hashibank_demo.vault_client import read_text
 
 SCENARIO = "k8s-jit"
 PERSONA = "relationship-assistant"
@@ -36,9 +36,7 @@ ROOT_TOKEN_FILE = RUNTIME_DIR / "hashibank-vault" / "root-token"
 KUBERNETES_ROLE = "relationship-assistant"
 KUBERNETES_NAMESPACE = "assistants"
 POD_NAME = "relationship-assistant"
-VAULT_INTERNAL_ADDR = "https://hashibank-vault:8200"
 VAULT_REACHABLE_ADDR = "https://host.docker.internal:18200"
-CA_CERT = "config/tls/hashibank-root-ca.crt"
 POD_TOKEN_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 POD_ROOT_CA = "/var/run/hashibank/roots/hashibank-root-ca.crt"
 DB_ROLE = "assistant-insights-readonly"
@@ -127,12 +125,12 @@ def broker_db_creds_step(state: dict) -> dict:
         f"vault read database/roles/{DB_ROLE}",
         token=root_token,
     )
-    run_vault_command(
+    creds_output = run_vault_command(
         "Just-in-time Postgres credentials from Vault",
-        f"vault read {DB_CREDS_PATH}",
+        f"vault read -format=json {DB_CREDS_PATH}",
         token=client_token,
     )
-    response = read_vault_path(VAULT_INTERNAL_ADDR, CA_CERT, client_token, DB_CREDS_PATH)
+    response = json.loads(creds_output)
     summary = {
         "db_username": response["data"]["username"],
         "db_lease_id": response.get("lease_id"),
