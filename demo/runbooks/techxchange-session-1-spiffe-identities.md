@@ -34,6 +34,10 @@ secrets engine mints the JWT-SVID) and the trust anchor that downstream services
 validate against (discovery and JWKS), which is the core Vault-plus-SPIFFE
 message.
 
+## Sequence
+
+![Zero-trust service-to-service auth with JWT-SVID](../../media/sequence-k8s-jwt.svg)
+
 ---
 
 ## Demo: `demo-k8s-jwt.sh`

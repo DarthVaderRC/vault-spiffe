@@ -36,6 +36,10 @@ Postgres. Instead of a static database password baked into config, the workload:
 This is the just-in-time, dynamic workload identity story end to end: verified
 identity in, ephemeral scoped secret out, with full lifecycle control.
 
+## Sequence
+
+![Just-in-time dynamic database credentials](../../media/sequence-k8s-jit.svg)
+
 ---
 
 ## Demo: `demo-k8s-jit.sh`

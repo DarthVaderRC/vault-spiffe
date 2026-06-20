@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 810" role="img" aria-label="Zero-trust service-to-service auth with JWT-SVID">
+<defs><style type="text/css"><![CDATA[@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');]]></style><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#161616"/></marker><marker id="arrowblue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0043ce"/></marker><marker id="arrowred" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#da1e28"/></marker></defs>
+<rect x="0" y="0" width="880" height="810" fill="#ffffff"/>
+<rect x="0" y="0" width="6" height="810" fill="#0f62fe"/>
+<text x="48" y="56" font-family="IBM Plex Sans" font-size="26" font-weight="700" fill="#161616">Zero-trust service-to-service auth with JWT-SVID</text>
+<text x="48" y="86" font-family="IBM Plex Sans" font-size="15" fill="#525252">Kubernetes auth -&gt; Vault SPIFFE JWT-SVID -&gt; downstream API validation</text>
+<line x1="48" y1="104" x2="128" y2="104" stroke="#0f62fe" stroke-width="3"/>
+<line x1="190" y1="196" x2="190" y2="746" stroke="#a8a8a8" stroke-width="1.5" stroke-dasharray="2 5"/>
+<rect x="96.0" y="132" width="188" height="64" rx="4" fill="#ffffff" stroke="#0f62fe" stroke-width="1.6"/>
+<rect x="96.0" y="132" width="188" height="5" rx="2" fill="#0f62fe"/>
+<text x="190" y="162" text-anchor="middle" font-family="IBM Plex Sans" font-size="14.5" font-weight="700" fill="#161616">relationship-assistant</text>
+<text x="190" y="182" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#525252">agent workload</text>
+<line x1="440" y1="196" x2="440" y2="746" stroke="#a8a8a8" stroke-width="1.5" stroke-dasharray="2 5"/>
+<rect x="346.0" y="132" width="188" height="64" rx="4" fill="#ffffff" stroke="#8a3ffc" stroke-width="1.6"/>
+<rect x="346.0" y="132" width="188" height="5" rx="2" fill="#8a3ffc"/>
+<text x="440" y="162" text-anchor="middle" font-family="IBM Plex Sans" font-size="14.5" font-weight="700" fill="#161616">Vault</text>
+<text x="440" y="182" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#525252">hashibank.demo</text>
+<line x1="690" y1="196" x2="690" y2="746" stroke="#a8a8a8" stroke-width="1.5" stroke-dasharray="2 5"/>
+<rect x="596.0" y="132" width="188" height="64" rx="4" fill="#ffffff" stroke="#007d79" stroke-width="1.6"/>
+<rect x="596.0" y="132" width="188" height="5" rx="2" fill="#007d79"/>
+<text x="690" y="162" text-anchor="middle" font-family="IBM Plex Sans" font-size="14.5" font-weight="700" fill="#161616">jwt-consumer</text>
+<text x="690" y="182" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#525252">insights API</text>
+<rect x="435.5" y="236.0" width="9" height="58.0" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="185.5" y="288.0" width="9" height="58.0" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="435.5" y="340.0" width="9" height="58.0" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="185.5" y="392.0" width="9" height="58.0" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="685.5" y="444.0" width="9" height="58.0" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="435.5" y="496.0" width="9" height="58.0" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="685.5" y="548.0" width="9" height="58.0" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="185.5" y="652.0" width="9" height="42.4" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<line x1="194.5" y1="242" x2="435.5" y2="242" stroke="#161616" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="315.0" y="233.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#161616">POST auth/kubernetes/login</text>
+<text x="315.0" y="257.0" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">projected SA token</text>
+<g><circle cx="178.5" cy="242.0" r="9" fill="#0f62fe"/><text x="178.5" y="245.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">1</text></g>
+<line x1="435.5" y1="294" x2="194.5" y2="294" stroke="#525252" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="315.0" y="285.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="400" fill="#525252">Vault client token</text>
+<text x="315.0" y="309.0" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">scoped policies</text>
+<g><circle cx="441.5" cy="294.0" r="9" fill="#0f62fe"/><text x="441.5" y="297.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">2</text></g>
+<line x1="194.5" y1="346" x2="435.5" y2="346" stroke="#161616" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="315.0" y="337.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#161616">POST spiffe/role/.../mintjwt</text>
+<text x="315.0" y="361.0" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">audience=relationship-insights-api</text>
+<g><circle cx="178.5" cy="346.0" r="9" fill="#0f62fe"/><text x="178.5" y="349.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">3</text></g>
+<line x1="435.5" y1="398" x2="194.5" y2="398" stroke="#525252" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="315.0" y="389.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="400" fill="#525252">JWT-SVID</text>
+<text x="315.0" y="413.0" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">spiffe:// sub + business claims</text>
+<g><circle cx="441.5" cy="398.0" r="9" fill="#0f62fe"/><text x="441.5" y="401.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">4</text></g>
+<line x1="194.5" y1="450" x2="685.5" y2="450" stroke="#161616" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="440.0" y="441.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#161616">GET /api/relationship-insights</text>
+<text x="440.0" y="465.0" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">Authorization: Bearer JWT-SVID</text>
+<g><circle cx="178.5" cy="450.0" r="9" fill="#0f62fe"/><text x="178.5" y="453.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">5</text></g>
+<line x1="685.5" y1="502" x2="444.5" y2="502" stroke="#161616" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="565.0" y="493.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#161616">GET discovery + JWKS</text>
+<text x="565.0" y="517.0" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">.well-known/openid-configuration</text>
+<g><circle cx="691.5" cy="502.0" r="9" fill="#0f62fe"/><text x="691.5" y="505.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">6</text></g>
+<line x1="444.5" y1="554" x2="685.5" y2="554" stroke="#525252" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="565.0" y="545.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="400" fill="#525252">issuer + public keys</text>
+<g><circle cx="428.5" cy="554.0" r="9" fill="#0f62fe"/><text x="428.5" y="557.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">7</text></g>
+<path d="M685.5,600 h-34 v18 h34" fill="none" stroke="#0043ce" stroke-width="1.6" marker-end="url(#arrowblue)"/>
+<text x="642.0" y="607.0" text-anchor="end" font-family="IBM Plex Sans" font-size="12.5" font-style="italic" fill="#525252">validate signature, authorize claims</text>
+<g><circle cx="710.5" cy="600.0" r="9" fill="#0f62fe"/><text x="710.5" y="603.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">8</text></g>
+<line x1="685.5" y1="658" x2="194.5" y2="658" stroke="#0043ce" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arrowblue)"/>
+<text x="440.0" y="649.0" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="400" fill="#525252">authorized insights + next-best action</text>
+<g><circle cx="691.5" cy="658.0" r="9" fill="#0f62fe"/><text x="691.5" y="661.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">9</text></g>
+<text x="48" y="784" font-family="IBM Plex Mono" font-size="11" fill="#525252">Session 1 - dynamic agent identity for zero-trust service-to-service auth</text>
+</svg>

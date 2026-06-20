@@ -76,7 +76,7 @@ curl --silent --show-error --fail \
     )
     login_command = (
         "curl --request POST \\\n"
-        '  --data \'{"role": "relationship-assistant", "jwt": "<service-account-token>"}\' \\\n'
+        '  --data \'{"role": "relationship-assistant", "jwt": "$POD_JWT"}\' \\\n'
         f"  {VAULT_REACHABLE_ADDR}/v1/auth/kubernetes/login"
     )
     print_json(
@@ -206,7 +206,7 @@ curl --silent --show-error --fail \
 '""",
     )
     consumer_command = (
-        'curl --header "Authorization: Bearer <jwt-svid>" \\\n'
+        'curl --header "Authorization: Bearer $JWT_SVID" \\\n'
         f"  http://jwt-consumer.{KUBERNETES_NAMESPACE}.svc.cluster.local:8080/api/relationship-insights"
     )
     print_json(
