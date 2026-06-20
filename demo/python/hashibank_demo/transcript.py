@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
@@ -63,6 +64,27 @@ def run_vault_command(
     if env:
         vault_env.update({key: str(value) for key, value in env.items()})
     return run_text_command(title, command, env=vault_env, show_command=show_command)
+
+
+def run_captured(command: str, *, env: dict[str, str] | None = None) -> str:
+    """Run a command and return its output without printing anything.
+
+    Used to execute the real (noisy) command behind a step while the presenter
+    sees a clean representative command and pretty-printed output instead.
+    """
+    return _run_shell(_prepare_command(command), env=env)
+
+
+def print_json(title: str, data: Any, *, command: str | None = None) -> None:
+    """Print a heading, an optional clean command line, and pretty JSON.
+
+    The full object is shown (json.dumps indent=2); this is not a curated
+    summary.
+    """
+    _print_heading(title)
+    if command:
+        _print_command(_prepare_command(command))
+    print(json.dumps(data, indent=2, default=str))
 
 
 def print_highlights(*lines: str) -> None:

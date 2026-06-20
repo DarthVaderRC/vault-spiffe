@@ -17,11 +17,11 @@ from hashibank_demo.checkpoints import (
     step_artifacts,
 )
 from hashibank_demo.transcript import (
-    print_highlights,
     print_info,
+    print_json,
     print_reset,
     print_status,
-    run_text_command,
+    run_captured,
     run_vault_command,
 )
 from hashibank_demo.vault_client import read_text
@@ -37,6 +37,8 @@ KUBERNETES_ROLE = "relationship-assistant"
 KUBERNETES_NAMESPACE = "assistants"
 POD_NAME = "relationship-assistant"
 VAULT_REACHABLE_ADDR = "https://host.docker.internal:18200"
+VAULT_INTERNAL_ADDR = "https://hashibank-vault:8200"
+VAULT_CACERT = "config/tls/hashibank-root-ca.crt"
 POD_TOKEN_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 POD_ROOT_CA = "/var/run/hashibank/roots/hashibank-root-ca.crt"
 DB_ROLE = "assistant-insights-readonly"
@@ -53,9 +55,8 @@ STEPS = [
 ]
 
 
-def _json_output(title: str, command: str) -> dict:
-    output = run_text_command(title, command)
-    return json.loads(output)
+def _capture_json(command: str, *, env: dict | None = None) -> dict:
+    return json.loads(run_captured(command, env=env))
 
 
 def lease_has_expired(state: dict, step_id: str, lease_duration: int | None, *, leeway_seconds: int = 20) -> bool:
@@ -76,13 +77,8 @@ def kubernetes_login_step(state: dict) -> dict:
         f"vault read auth/kubernetes/role/{KUBERNETES_ROLE}",
         token=root_token,
     )
-    run_text_command(
-        "Assistant service account",
-        f"kubectl get serviceaccount -n {KUBERNETES_NAMESPACE} {KUBERNETES_ROLE} -o yaml",
-    )
 
-    login_data = _json_output(
-        "Assistant Kubernetes auth login",
+    login_data = _capture_json(
         f"""kubectl exec -n {KUBERNETES_NAMESPACE} {POD_NAME} -- bash -lc '
 JWT=$(cat {POD_TOKEN_FILE})
 payload=$(jq -nc --arg role {json.dumps(KUBERNETES_ROLE)} --arg jwt "$JWT" "{{\\\"role\\\": \\$role, \\\"jwt\\\": \\$jwt}}")
@@ -94,17 +90,23 @@ curl --silent --show-error --fail \
   {VAULT_REACHABLE_ADDR}/v1/auth/kubernetes/login | jq -c .
 '""",
     )
+    login_command = (
+        "curl --request POST \\\n"
+        '  --data \'{"role": "relationship-assistant", "jwt": "<service-account-token>"}\' \\\n'
+        f"  {VAULT_REACHABLE_ADDR}/v1/auth/kubernetes/login"
+    )
+    print_json(
+        "Assistant Kubernetes auth login",
+        login_data,
+        command=login_command,
+    )
+
     auth = login_data["auth"]
     summary = {
         "service_account_name": auth["metadata"]["service_account_name"],
         "service_account_namespace": auth["metadata"]["service_account_namespace"],
         "vault_policies": auth.get("policies", []),
     }
-    print_highlights(
-        f"service_account = {summary['service_account_namespace']}/{summary['service_account_name']}",
-        f"vault_policies = {', '.join(summary['vault_policies'])}",
-        "The workload authenticates with its Kubernetes identity, not a static secret.",
-    )
     record_step(
         state,
         STEPS,
@@ -125,23 +127,25 @@ def broker_db_creds_step(state: dict) -> dict:
         f"vault read database/roles/{DB_ROLE}",
         token=root_token,
     )
-    creds_output = run_vault_command(
-        "Just-in-time Postgres credentials from Vault",
+    response = _capture_json(
         f"vault read -format=json {DB_CREDS_PATH}",
-        token=client_token,
+        env={
+            "VAULT_ADDR": VAULT_INTERNAL_ADDR,
+            "VAULT_CACERT": VAULT_CACERT,
+            "VAULT_TOKEN": client_token,
+        },
     )
-    response = json.loads(creds_output)
+    print_json(
+        "Just-in-time Postgres credentials from Vault",
+        response,
+        command=f"vault read {DB_CREDS_PATH}",
+    )
+
     summary = {
         "db_username": response["data"]["username"],
         "db_lease_id": response.get("lease_id"),
         "db_lease_duration": response.get("lease_duration"),
     }
-    print_highlights(
-        f"db_username = {summary['db_username']}",
-        f"lease_id = {summary['db_lease_id']}",
-        f"lease_duration = {summary['db_lease_duration']} seconds",
-        "Vault created a brand new, short-lived Postgres user tied to this request.",
-    )
     record_step(
         state,
         STEPS,
@@ -163,8 +167,7 @@ def query_insights_step(state: dict) -> dict:
     if lease_has_expired(state, "broker-db-creds", db_artifacts["db_lease_duration"]):
         raise RuntimeError("Brokered DB credentials expired; rerun ./scripts/demo-k8s-jit.sh")
 
-    rows_output = run_text_command(
-        "Relationship insights query with Vault-issued Postgres credentials",
+    rows_output = run_captured(
         f"""
         python - <<'PY'
 import json
@@ -204,15 +207,20 @@ PY
             "DB_USERNAME": db_artifacts["db_username"],
             "DB_PASSWORD": db_artifacts["db_password"],
         },
-        show_command=False,
     )
     result = json.loads(rows_output)
     rows = result["rows"]
-    print_highlights(
-        f"connected_as = {result['db_user']}",
-        f"rows_returned = {len(rows)}",
-        "The query runs as the ephemeral Vault-issued user, scoped to read-only relationship data.",
+    query_command = (
+        "psql -c \"SELECT customer_mask, segment, relationship_tier, lifetime_value,\n"
+        "  primary_product, next_best_action FROM customer_relationships\n"
+        "  ORDER BY lifetime_value DESC LIMIT 5\""
     )
+    print_json(
+        "Relationship insights query with Vault-issued Postgres credentials",
+        result,
+        command=query_command,
+    )
+
     summary = {
         "connected_as": result["db_user"],
         "row_count": len(rows),
@@ -244,8 +252,7 @@ def revoke_lease_step(state: dict) -> dict:
         token=root_token,
     )
 
-    revoked_output = run_text_command(
-        "Confirm the ephemeral credential no longer works",
+    revoked_output = run_captured(
         f"""
         python - <<'PY'
 import json
@@ -271,16 +278,14 @@ PY
             "DB_USERNAME": db_artifacts["db_username"],
             "DB_PASSWORD": db_artifacts["db_password"],
         },
-        show_command=False,
     )
     revoked = json.loads(revoked_output)
     if not revoked.get("revoked"):
         raise RuntimeError("Expected the revoked credential to fail, but the connection succeeded")
-    print_highlights(
-        f"db_username = {db_artifacts['db_username']}",
-        "revoked = true",
-        f"detail = {revoked.get('detail')}",
-        "Vault revoked the Postgres user; the leaked credential is now useless.",
+    print_json(
+        "Confirm the ephemeral credential no longer works",
+        {"db_username": db_artifacts["db_username"], **revoked},
+        command=f"psql 'host={POSTGRES_HOST} user={db_artifacts['db_username']} dbname={POSTGRES_DB}'",
     )
     print_info("Just-in-time identity proven: ephemeral user issued, used, and revoked on demand.")
     summary = {

@@ -475,14 +475,14 @@ review_bootstrap() {
 
   print_heading "Vault Kubernetes auth configuration"
   show_vault_command_output "Kubernetes auth config" "vault read auth/kubernetes/config" "root"
-  show_vault_command_output "Payments Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_PAYMENTS_SERVICE_ACCOUNT}" "root"
-  show_vault_command_output "mTLS backend Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_MTLS_BACKEND_SERVICE_ACCOUNT}" "root"
+  #show_vault_command_output "Payments Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_PAYMENTS_SERVICE_ACCOUNT}" "root"
+  #show_vault_command_output "mTLS backend Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_MTLS_BACKEND_SERVICE_ACCOUNT}" "root"
   show_vault_command_output "Assistant Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_ASSISTANT_SERVICE_ACCOUNT}" "root"
   pause_for_continue
 
-  print_heading "Issuer roles and trust assets"
-  show_vault_command_output "Payments PKI role" "vault read pki/roles/payments-k8s-spiffe" "root"
-  show_vault_command_output "mTLS backend PKI role" "vault read pki/roles/mtls-backend-k8s-spiffe" "root"
+  #print_heading "Issuer roles and trust assets"
+  #show_vault_command_output "Payments PKI role" "vault read pki/roles/payments-k8s-spiffe" "root"
+  #show_vault_command_output "mTLS backend PKI role" "vault read pki/roles/mtls-backend-k8s-spiffe" "root"
   print_heading "Vault SPIFFE engine configuration"
   show_vault_command_output "SPIFFE engine configuration" "vault read spiffe/config" "root"
   show_vault_command_output "Assistant SPIFFE role" "vault read spiffe/role/relationship-assistant-k8s" "root"
@@ -493,21 +493,21 @@ review_bootstrap() {
   show_vault_command_output "Assistant dynamic database role" "vault read database/roles/${ASSISTANT_DB_ROLE}" "root"
   pause_for_continue
 
-  print_heading "Kubernetes workloads"
-  show_command_output \
-    "Payments namespace pods and services" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}"
-  show_command_output \
-    "Assistants namespace pods and services" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}"
-  show_command_output \
-    "Demo service accounts" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}"
+  #print_heading "Kubernetes workloads"
+  #show_command_output \
+  #  "Payments namespace pods and services" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}"
+  #show_command_output \
+  #  "Assistants namespace pods and services" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}"
+  # show_command_output \
+  #  "Demo service accounts" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}"
 
-  printf '\nKubernetes-native review complete.\n'
+  # printf '\nKubernetes-native review complete.\n'
 }
 
 json_get() {

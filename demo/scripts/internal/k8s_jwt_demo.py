@@ -16,9 +16,10 @@ from hashibank_demo.checkpoints import (
     step_artifacts,
 )
 from hashibank_demo.transcript import (
+    print_json,
     print_reset,
     print_status,
-    run_text_command,
+    run_captured,
     run_vault_command,
 )
 from hashibank_demo.vault_client import decode_unverified_jwt, read_text
@@ -38,7 +39,6 @@ POD_NAME = "relationship-assistant"
 VAULT_REACHABLE_ADDR = "https://host.docker.internal:18200"
 POD_TOKEN_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 POD_ROOT_CA = "/var/run/hashibank/roots/hashibank-root-ca.crt"
-JWT_FILE = "/tmp/hashibank-demo/assistant.jwt"
 JWT_AUDIENCE = "relationship-insights-api"
 
 STEPS = [
@@ -49,9 +49,8 @@ STEPS = [
 ]
 
 
-def _json_output(title: str, command: str) -> dict:
-    output = run_text_command(title, command)
-    return json.loads(output)
+def _capture_json(command: str, *, env: dict | None = None) -> dict:
+    return json.loads(run_captured(command, env=env))
 
 
 def kubernetes_login_step(state: dict) -> dict:
@@ -62,13 +61,8 @@ def kubernetes_login_step(state: dict) -> dict:
         f"vault read auth/kubernetes/role/{KUBERNETES_ROLE}",
         token=root_token,
     )
-    run_text_command(
-        "Assistant service account",
-        f"kubectl get serviceaccount -n {KUBERNETES_NAMESPACE} {KUBERNETES_ROLE} -o yaml",
-    )
 
-    login_data = _json_output(
-        "Assistant Kubernetes auth login",
+    login_data = _capture_json(
         f"""kubectl exec -n {KUBERNETES_NAMESPACE} {POD_NAME} -- bash -lc '
 JWT=$(cat {POD_TOKEN_FILE})
 payload=$(jq -nc --arg role {json.dumps(KUBERNETES_ROLE)} --arg jwt "$JWT" "{{\\\"role\\\": \\$role, \\\"jwt\\\": \\$jwt}}")
@@ -80,6 +74,17 @@ curl --silent --show-error --fail \
   {VAULT_REACHABLE_ADDR}/v1/auth/kubernetes/login | jq -c .
 '""",
     )
+    login_command = (
+        "curl --request POST \\\n"
+        '  --data \'{"role": "relationship-assistant", "jwt": "<service-account-token>"}\' \\\n'
+        f"  {VAULT_REACHABLE_ADDR}/v1/auth/kubernetes/login"
+    )
+    print_json(
+        "Assistant Kubernetes auth login",
+        login_data,
+        command=login_command,
+    )
+
     auth = login_data["auth"]
     summary = {
         "service_account_name": auth["metadata"]["service_account_name"],
@@ -107,36 +112,27 @@ def mint_jwt_step(state: dict) -> dict:
         token=root_token,
     )
 
-    mint_data = _json_output(
-        "Assistant JWT-SVID mint response",
+    mint_data = _capture_json(
         f"""kubectl exec -n {KUBERNETES_NAMESPACE} {POD_NAME} -- bash -lc '
-mkdir -p /tmp/hashibank-demo
 payload=$(jq -nc --arg audience {json.dumps(JWT_AUDIENCE)} "{{\\\"audience\\\": \\$audience}}")
-response=$(curl --silent --show-error --fail \
+curl --silent --show-error --fail \
   --cacert {POD_ROOT_CA} \
   --header "Content-Type: application/json" \
   --header "X-Vault-Token: {issuer_token}" \
   --request POST \
   --data "$payload" \
-  {VAULT_REACHABLE_ADDR}/v1/spiffe/role/{SPIFFE_ROLE}/mintjwt)
-printf "%s" "$response" | jq -r ".data.token" > {JWT_FILE}
-printf "%s" "$response" | jq -c .
+  {VAULT_REACHABLE_ADDR}/v1/spiffe/role/{SPIFFE_ROLE}/mintjwt | jq -c .
 '""",
+    )
+    print_json(
+        "Assistant JWT-SVID mint response",
+        mint_data,
+        command=f"vault write spiffe/role/{SPIFFE_ROLE}/mintjwt audience={JWT_AUDIENCE}",
     )
 
     jwt_token = mint_data["data"]["token"]
     jwt_claims = decode_unverified_jwt(jwt_token)
-    run_text_command(
-        "Decoded assistant JWT-SVID claims",
-        f"""python - <<'PY'
-import json
-from hashibank_demo.vault_client import decode_unverified_jwt
-
-token = {json.dumps(jwt_token)}
-print(json.dumps(decode_unverified_jwt(token), indent=2))
-PY""",
-        env={"PYTHONPATH": "/workspace/demo/python"},
-    )
+    print_json("Decoded assistant JWT-SVID claims", jwt_claims)
 
     summary = {
         "sub": jwt_claims["sub"],
@@ -161,18 +157,28 @@ PY""",
 def fetch_discovery_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "fetch-discovery")
 
-    discovery = _json_output(
-        "SPIFFE discovery document from Vault",
+    discovery = _capture_json(
         f"""curl --silent --show-error --fail \
   --cacert config/tls/hashibank-root-ca.crt \
   {VAULT_REACHABLE_ADDR}/v1/spiffe/.well-known/openid-configuration | jq -c .""",
     )
-    jwks = _json_output(
-        "SPIFFE JWKS from Vault",
+    print_json(
+        "SPIFFE discovery document from Vault",
+        discovery,
+        command=f"curl {VAULT_REACHABLE_ADDR}/v1/spiffe/.well-known/openid-configuration",
+    )
+
+    jwks = _capture_json(
         f"""curl --silent --show-error --fail \
   --cacert config/tls/hashibank-root-ca.crt \
   {VAULT_REACHABLE_ADDR}/v1/spiffe/.well-known/keys | jq -c .""",
     )
+    print_json(
+        "SPIFFE JWKS from Vault",
+        jwks,
+        command=f"curl {VAULT_REACHABLE_ADDR}/v1/spiffe/.well-known/keys",
+    )
+
     summary = {
         "issuer": discovery["issuer"],
         "jwks_uri": discovery["jwks_uri"],
@@ -192,14 +198,23 @@ def call_consumer_step(state: dict) -> dict:
     require_step_dependencies(state, STEPS, "call-consumer")
     jwt_token = step_artifacts(state, "mint-jwt")["jwt_token"]
 
-    response = _json_output(
-        "Authorized call to the relationship insights API",
+    response = _capture_json(
         f"""kubectl exec -n {KUBERNETES_NAMESPACE} {POD_NAME} -- bash -lc '
 curl --silent --show-error --fail \
   --header "Authorization: Bearer {jwt_token}" \
   http://jwt-consumer.{KUBERNETES_NAMESPACE}.svc.cluster.local:8080/api/relationship-insights | jq -c .
 '""",
     )
+    consumer_command = (
+        'curl --header "Authorization: Bearer <jwt-svid>" \\\n'
+        f"  http://jwt-consumer.{KUBERNETES_NAMESPACE}.svc.cluster.local:8080/api/relationship-insights"
+    )
+    print_json(
+        "Authorized call to the relationship insights API",
+        response,
+        command=consumer_command,
+    )
+
     summary = {
         "message": response["message"],
         "validated_claims": response["validated_claims"],
