@@ -29,7 +29,8 @@ The .mp4 is already H.264 / 1440p (GitHub's recommended codec) and ~6 MB, within
 the 10 MB free-plan upload limit.
 -->
 
-> 📹 **Demo recording:** upload `media/vault-jit-db-credentials-demo.mp4` to a PR or issue comment and paste the resulting GitHub video URL on its own line here.
+<video src="https://github.com/user-attachments/assets/10694da9-065e-44d1-aa65-16e3e190e4c9" controls="controls" style="max-width: 100%;">
+</video>
 
 ## Sequence diagram
 

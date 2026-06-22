@@ -25,7 +25,8 @@ The .mp4 is already H.264 / 1440p (GitHub's recommended codec) and ~8 MB, within
 the 10 MB free-plan upload limit.
 -->
 
-> 📹 **Demo recording:** upload `media/Vault-spiffe-identities-demo.mp4` to a PR or issue comment and paste the resulting GitHub video URL on its own line here.
+<video src="https://github.com/user-attachments/assets/0aa80f19-0903-486a-b7bb-6fb2e82d760c" controls="controls" style="max-width: 100%;">
+</video>
 
 ## Sequence diagram
 
