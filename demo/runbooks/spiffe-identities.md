@@ -12,6 +12,21 @@ This is the cleanest way to show Vault as both the identity issuer (the SPIFFE s
 
 ## Demo recording
 
+<!--
+GitHub plays a video inline only when the file is uploaded as an attachment, not
+when it is referenced by a committed relative path. To embed this recording:
+  1. Open (or edit) a pull request or issue on this repository.
+  2. Drag and drop `media/Vault-spiffe-identities-demo.mp4` into the comment box.
+     GitHub uploads it and inserts a URL like
+     https://github.com/user-attachments/assets/<uuid>.
+  3. Copy that URL and replace the placeholder line below with it (URL on its own
+     line). GitHub then renders an inline player.
+The .mp4 is already H.264 / 1080p (GitHub's recommended codec) and ~3 MB, within
+the 10 MB free-plan upload limit.
+-->
+
+> 📹 **Demo recording:** upload `media/Vault-spiffe-identities-demo.mp4` to a PR or issue comment and paste the resulting GitHub video URL on its own line here.
+
 ## Sequence diagram
 
 ![Zero-trust service-to-service auth with JWT-SVID](../../media/sequence-k8s-jwt.svg)
@@ -20,7 +35,7 @@ This is the cleanest way to show Vault as both the identity issuer (the SPIFFE s
 
 ## Demo: `demo-k8s-jwt.sh`
 
-The demo is checkpointed and pauses between steps. The Kubernetes login and JWT mint run inside the actual `relationship-assistant` pod; discovery and the downstream API call show the validation path.
+The demo is checkpointed and pauses after every call. The Kubernetes login and JWT mint run inside the actual `relationship-assistant` pod; discovery and the downstream API call show the validation path.
 
 ### Pre-flight
 
@@ -44,7 +59,7 @@ Optional pre-brief for a technical audience: `./scripts/bootstrap.sh review` pag
 ./scripts/demo-k8s-jwt.sh run
 ```
 
-Press `n` to advance between the four checkpoints.
+Press `Enter` to advance — the demo pauses after every call, not just between the four checkpoints below.
 
 | Step | Checkpoint | What appears on screen | What to say |
 |------|-----------|------------------------|-------------|

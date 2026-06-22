@@ -16,6 +16,21 @@ This is the just-in-time, dynamic workload identity story end to end: verified i
 
 ## Demo recording
 
+<!--
+GitHub plays a video inline only when the file is uploaded as an attachment, not
+when it is referenced by a committed relative path. To embed this recording:
+  1. Open (or edit) a pull request or issue on this repository.
+  2. Drag and drop `media/vault-jit-db-credentials-demo.mp4` into the comment box.
+     GitHub uploads it and inserts a URL like
+     https://github.com/user-attachments/assets/<uuid>.
+  3. Copy that URL and replace the placeholder line below with it (URL on its own
+     line). GitHub then renders an inline player.
+The .mp4 is already H.264 / 1080p (GitHub's recommended codec) and ~3 MB, within
+the 10 MB free-plan upload limit.
+-->
+
+> 📹 **Demo recording:** upload `media/vault-jit-db-credentials-demo.mp4` to a PR or issue comment and paste the resulting GitHub video URL on its own line here.
+
 ## Sequence diagram
 
 ![Just-in-time dynamic database credentials](../../media/sequence-k8s-jit.svg)
@@ -24,7 +39,7 @@ This is the just-in-time, dynamic workload identity story end to end: verified i
 
 ## Demo: `demo-k8s-jit.sh`
 
-The demo is checkpointed and pauses between steps. It runs the database query and revocation proof from the `demo-tools` container; the workload identity is obtained by executing the Kubernetes login inside the actual `relationship-assistant` pod.
+The demo is checkpointed and pauses after every call. It runs the database query and revocation proof from the `demo-tools` container; the workload identity is obtained by executing the Kubernetes login inside the actual `relationship-assistant` pod.
 
 ### Pre-flight
 
@@ -50,7 +65,7 @@ Optional pre-brief for a technical audience: `./scripts/bootstrap.sh review` pag
 ./scripts/demo-k8s-jit.sh run
 ```
 
-Press `n` to advance between the four checkpoints.
+Press `Enter` to advance — the demo pauses after every call, not just between the four checkpoints below.
 
 | Step | Checkpoint | What appears on screen | What to say |
 |------|-----------|------------------------|-------------|
