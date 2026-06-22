@@ -9,9 +9,10 @@ ACTION="${1:-run}"
 
 run_internal() {
   local command="$1"
+  local pause_env="${2:-}"
 
   compose exec -T demo-tools bash -lc \
-    "export PYTHONPATH=/workspace/demo/python KUBECONFIG=/workspace/demo/runtime/kind/kubeconfig-docker; python /workspace/demo/scripts/internal/k8s_mtls_demo.py '$command'"
+    "export PYTHONPATH=/workspace/demo/python KUBECONFIG=/workspace/demo/runtime/kind/kubeconfig-docker ${pause_env}; python /workspace/demo/scripts/internal/k8s_mtls_demo.py '$command'"
 }
 
 run_flow() {
@@ -26,10 +27,7 @@ run_flow() {
   rm -f "$RUNTIME_DIR/checkpoints/k8s-mtls.json"
 
   for idx in "${!steps[@]}"; do
-    run_internal "${steps[$idx]}"
-    if (( idx + 1 < ${#steps[@]} )); then
-      pause_for_continue
-    fi
+    run_internal "${steps[$idx]}" "$(demo_pause_env "$idx")"
   done
 }
 

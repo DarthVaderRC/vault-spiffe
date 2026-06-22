@@ -9,9 +9,10 @@ ACTION="${1:-run}"
 
 run_internal() {
   local command="$1"
+  local pause_env="${2:-}"
 
   spire_client_exec \
-    "export PYTHONPATH=/workspace/demo/python; python /workspace/demo/scripts/internal/spire_upstreamauthority_demo.py '$command'"
+    "export PYTHONPATH=/workspace/demo/python ${pause_env}; python /workspace/demo/scripts/internal/spire_upstreamauthority_demo.py '$command'"
 }
 
 run_flow() {
@@ -25,10 +26,7 @@ run_flow() {
   rm -f "$RUNTIME_DIR/checkpoints/spire-upstreamauthority.json"
 
   for idx in "${!steps[@]}"; do
-    run_internal "${steps[$idx]}"
-    if (( idx + 1 < ${#steps[@]} )); then
-      pause_for_continue
-    fi
+    run_internal "${steps[$idx]}" "$(demo_pause_env "$idx")"
   done
 }
 

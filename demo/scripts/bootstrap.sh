@@ -37,6 +37,12 @@ SPIRE_DB_CONNECTION_URL="postgresql://{{username}}:{{password}}@postgres-hashiba
 SPIRE_DB_CREATION_FILE="$RUNTIME_DIR/generated/spire-fraud-readonly.sql"
 SPIRE_DB_REVOCATION_FILE="$RUNTIME_DIR/generated/spire-fraud-readonly-revoke.sql"
 
+ASSISTANT_DB_CONFIG_NAME="hashibank-insights-db"
+ASSISTANT_DB_ROLE="assistant-insights-readonly"
+ASSISTANT_DB_CONNECTION_URL="postgresql://{{username}}:{{password}}@postgres-hashibank:5432/hashibank?sslmode=disable"
+ASSISTANT_DB_CREATION_FILE="$RUNTIME_DIR/generated/assistant-insights-readonly.sql"
+ASSISTANT_DB_REVOCATION_FILE="$RUNTIME_DIR/generated/assistant-insights-readonly-revoke.sql"
+
 kubectl_host() {
   KUBECONFIG="$KUBECONFIG_HOST_FILE" kubectl "$@"
 }
@@ -271,7 +277,8 @@ configure_vault_kubernetes_auth() {
   write_policies "$root_token" \
     identity-payments-k8s-issuer \
     identity-mtls-backend-k8s-issuer \
-    identity-assistant-k8s-spiffe
+    identity-assistant-k8s-spiffe \
+    identity-assistant-k8s-jit
 
   if ! vault_exec "VAULT_TOKEN=$root_token vault auth list | grep -q '^kubernetes/'"; then
     vault_exec "VAULT_TOKEN=$root_token vault auth enable kubernetes" >/dev/null
@@ -281,7 +288,7 @@ configure_vault_kubernetes_auth() {
 
   vault_exec "VAULT_TOKEN=$root_token vault write auth/kubernetes/role/${K8S_PAYMENTS_SERVICE_ACCOUNT} bound_service_account_names=${K8S_PAYMENTS_SERVICE_ACCOUNT} bound_service_account_namespaces=${K8S_PAYMENTS_NAMESPACE} alias_name_source=serviceaccount_name ${audience_arg} token_type=batch token_ttl=15m token_max_ttl=15m token_policies=identity-payments-k8s-issuer" >/dev/null
   vault_exec "VAULT_TOKEN=$root_token vault write auth/kubernetes/role/${K8S_MTLS_BACKEND_SERVICE_ACCOUNT} bound_service_account_names=${K8S_MTLS_BACKEND_SERVICE_ACCOUNT} bound_service_account_namespaces=${K8S_PAYMENTS_NAMESPACE} alias_name_source=serviceaccount_name ${audience_arg} token_type=batch token_ttl=15m token_max_ttl=15m token_policies=identity-mtls-backend-k8s-issuer" >/dev/null
-  vault_exec "VAULT_TOKEN=$root_token vault write auth/kubernetes/role/${K8S_ASSISTANT_SERVICE_ACCOUNT} bound_service_account_names=${K8S_ASSISTANT_SERVICE_ACCOUNT} bound_service_account_namespaces=${K8S_ASSISTANTS_NAMESPACE} alias_name_source=serviceaccount_name ${audience_arg} token_type=batch token_ttl=15m token_max_ttl=15m token_policies=identity-assistant-k8s-spiffe" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write auth/kubernetes/role/${K8S_ASSISTANT_SERVICE_ACCOUNT} bound_service_account_names=${K8S_ASSISTANT_SERVICE_ACCOUNT} bound_service_account_namespaces=${K8S_ASSISTANTS_NAMESPACE} alias_name_source=serviceaccount_name ${audience_arg} token_type=batch token_ttl=15m token_max_ttl=15m token_policies=identity-assistant-k8s-spiffe,identity-assistant-k8s-jit" >/dev/null
   vault_exec "VAULT_TOKEN=$root_token vault write pki/roles/payments-k8s-spiffe allow_any_name=true enforce_hostnames=false require_cn=false allowed_uri_sans='spiffe://hashibank.demo/ns/${K8S_PAYMENTS_NAMESPACE}/sa/${K8S_PAYMENTS_SERVICE_ACCOUNT}' max_ttl=8h" >/dev/null
   vault_exec "VAULT_TOKEN=$root_token vault write pki/roles/mtls-backend-k8s-spiffe allow_any_name=true enforce_hostnames=false require_cn=false allowed_uri_sans='spiffe://hashibank.demo/ns/${K8S_PAYMENTS_NAMESPACE}/sa/${K8S_MTLS_BACKEND_SERVICE_ACCOUNT}' max_ttl=8h" >/dev/null
 
@@ -292,6 +299,69 @@ configure_vault_kubernetes_auth() {
 {"sub":"spiffe://hashibank.demo/ns/{{identity.entity.aliases.${k8s_accessor}.metadata.service_account_namespace}}/sa/{{identity.entity.aliases.${k8s_accessor}.metadata.service_account_name}}","bank":"HashiBank","application":"relationship-assistant","line_of_business":"relationship-banking","environment":"demo","customer_data_domain":"masked-assistant-context","kubernetes_service_account":"{{identity.entity.aliases.${k8s_accessor}.metadata.service_account_namespace}}/{{identity.entity.aliases.${k8s_accessor}.metadata.service_account_name}}"}
 EOF
   vault_exec "VAULT_TOKEN=$root_token vault write spiffe/role/relationship-assistant-k8s template=@/vault/runtime/templates/relationship-assistant-k8s-template.json ttl=15m use_jti_claim=true" >/dev/null
+}
+
+ensure_relationship_insights_table() {
+  compose exec -T postgres-hashibank psql -v ON_ERROR_STOP=1 -U postgres -d hashibank >/dev/null <<'SQL'
+CREATE TABLE IF NOT EXISTS customer_relationships (
+  id SERIAL PRIMARY KEY,
+  customer_mask TEXT NOT NULL,
+  segment TEXT NOT NULL,
+  relationship_tier TEXT NOT NULL,
+  lifetime_value NUMERIC(14,2) NOT NULL,
+  primary_product TEXT NOT NULL,
+  next_best_action TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO customer_relationships (customer_mask, segment, relationship_tier, lifetime_value, primary_product, next_best_action, updated_at)
+SELECT v.customer_mask, v.segment, v.relationship_tier, v.lifetime_value, v.primary_product, v.next_best_action, v.updated_at
+FROM (VALUES
+  ('**** 4417'::text, 'PRIVATE_WEALTH'::text, 'PLATINUM'::text, 1840500.00::numeric, 'Discretionary Portfolio'::text, 'Schedule annual wealth review'::text, NOW() - INTERVAL '3 days'),
+  ('**** 9920', 'SME_BANKING', 'GOLD', 412300.00, 'Working Capital Facility', 'Offer FX hedging consultation', NOW() - INTERVAL '9 days'),
+  ('**** 1185', 'RETAIL_PREMIER', 'GOLD', 96750.00, 'Offset Home Loan', 'Review redraw and rate options', NOW() - INTERVAL '1 day'),
+  ('**** 7762', 'PRIVATE_WEALTH', 'PLATINUM', 2675000.00, 'Structured Investment', 'Introduce estate planning desk', NOW() - INTERVAL '14 days'),
+  ('**** 3308', 'RETAIL_PREMIER', 'SILVER', 38400.00, 'Everyday Plus Account', 'Promote savings goal automation', NOW() - INTERVAL '6 hours')
+) AS v(customer_mask, segment, relationship_tier, lifetime_value, primary_product, next_best_action, updated_at)
+WHERE NOT EXISTS (SELECT 1 FROM customer_relationships);
+
+GRANT SELECT ON TABLE public.customer_relationships TO vaultadmin WITH GRANT OPTION;
+SQL
+}
+
+configure_vault_assistant_database_access() {
+  local root_token="$1"
+
+  mkdir -p "$RUNTIME_DIR/generated"
+
+  cat >"$ASSISTANT_DB_CREATION_FILE" <<'EOF'
+CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';
+GRANT CONNECT ON DATABASE hashibank TO "{{name}}";
+GRANT USAGE ON SCHEMA public TO "{{name}}";
+GRANT SELECT ON TABLE public.customer_relationships TO "{{name}}";
+EOF
+
+  cat >"$ASSISTANT_DB_REVOCATION_FILE" <<'EOF'
+REVOKE SELECT ON TABLE public.customer_relationships FROM "{{name}}";
+REVOKE USAGE ON SCHEMA public FROM "{{name}}";
+REVOKE CONNECT ON DATABASE hashibank FROM "{{name}}";
+DROP ROLE IF EXISTS "{{name}}";
+EOF
+
+  if ! vault_exec "VAULT_TOKEN=$root_token vault secrets list | grep -q '^database/'"; then
+    vault_exec "VAULT_TOKEN=$root_token vault secrets enable database" >/dev/null
+  fi
+
+  vault_exec "VAULT_TOKEN=$root_token vault write database/config/${ASSISTANT_DB_CONFIG_NAME} plugin_name=postgresql-database-plugin allowed_roles=${ASSISTANT_DB_ROLE} connection_url='${ASSISTANT_DB_CONNECTION_URL}' username='vaultadmin' password='vaultadminpw'" >/dev/null
+  vault_exec "VAULT_TOKEN=$root_token vault write database/roles/${ASSISTANT_DB_ROLE} db_name=${ASSISTANT_DB_CONFIG_NAME} creation_statements=@/vault/runtime/generated/$(basename "$ASSISTANT_DB_CREATION_FILE") revocation_statements=@/vault/runtime/generated/$(basename "$ASSISTANT_DB_REVOCATION_FILE") default_ttl=5m max_ttl=30m" >/dev/null
+}
+
+configure_vault_assistant_jit_database() {
+  echo "Starting Postgres for the just-in-time credential brokering proof..."
+  compose up -d postgres-hashibank >/dev/null 2>&1
+  wait_for_postgres
+  ensure_relationship_insights_table
+  configure_vault_assistant_database_access "$(<"$ROOT_TOKEN_FILE")"
 }
 
 publish_k8s_trust_assets() {
@@ -342,6 +412,7 @@ bootstrap_base() {
   apply_namespaces_and_rbac
   mint_reviewer_token
   configure_vault_kubernetes_auth
+  configure_vault_assistant_jit_database
   publish_k8s_trust_assets
   apply_k8s_workloads
   wait_for_k8s_workloads
@@ -386,6 +457,7 @@ Review:
 Vault-native workload identity sub-use cases:
   ./scripts/demo-k8s-mtls.sh
   ./scripts/demo-k8s-jwt.sh
+  ./scripts/demo-k8s-jit.sh
 
 Optional SPIRE overlay:
   ./scripts/bootstrap.sh spire
@@ -403,34 +475,39 @@ review_bootstrap() {
 
   print_heading "Vault Kubernetes auth configuration"
   show_vault_command_output "Kubernetes auth config" "vault read auth/kubernetes/config" "root"
-  show_vault_command_output "Payments Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_PAYMENTS_SERVICE_ACCOUNT}" "root"
-  show_vault_command_output "mTLS backend Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_MTLS_BACKEND_SERVICE_ACCOUNT}" "root"
+  #show_vault_command_output "Payments Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_PAYMENTS_SERVICE_ACCOUNT}" "root"
+  #show_vault_command_output "mTLS backend Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_MTLS_BACKEND_SERVICE_ACCOUNT}" "root"
   show_vault_command_output "Assistant Kubernetes auth role" "vault read auth/kubernetes/role/${K8S_ASSISTANT_SERVICE_ACCOUNT}" "root"
   pause_for_continue
 
-  print_heading "Issuer roles and trust assets"
-  show_vault_command_output "Payments PKI role" "vault read pki/roles/payments-k8s-spiffe" "root"
-  show_vault_command_output "mTLS backend PKI role" "vault read pki/roles/mtls-backend-k8s-spiffe" "root"
+  #print_heading "Issuer roles and trust assets"
+  #show_vault_command_output "Payments PKI role" "vault read pki/roles/payments-k8s-spiffe" "root"
+  #show_vault_command_output "mTLS backend PKI role" "vault read pki/roles/mtls-backend-k8s-spiffe" "root"
   print_heading "Vault SPIFFE engine configuration"
   show_vault_command_output "SPIFFE engine configuration" "vault read spiffe/config" "root"
   show_vault_command_output "Assistant SPIFFE role" "vault read spiffe/role/relationship-assistant-k8s" "root"
   pause_for_continue
 
-  print_heading "Kubernetes workloads"
-  show_command_output \
-    "Payments namespace pods and services" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}"
-  show_command_output \
-    "Assistants namespace pods and services" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}"
-  show_command_output \
-    "Demo service accounts" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}" \
-    "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}"
+  print_heading "Vault dynamic database brokering"
+  show_vault_command_output "Assistant database connection" "vault read database/config/${ASSISTANT_DB_CONFIG_NAME}" "root"
+  show_vault_command_output "Assistant dynamic database role" "vault read database/roles/${ASSISTANT_DB_ROLE}" "root"
+  pause_for_continue
 
-  printf '\nKubernetes-native review complete.\n'
+  #print_heading "Kubernetes workloads"
+  #show_command_output \
+  #  "Payments namespace pods and services" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_PAYMENTS_NAMESPACE}"
+  #show_command_output \
+  #  "Assistants namespace pods and services" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get pods,svc -n ${K8S_ASSISTANTS_NAMESPACE}"
+  # show_command_output \
+  #  "Demo service accounts" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}" \
+  #  "KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_VAULT_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_PAYMENTS_NAMESPACE} && printf '\\n' && KUBECONFIG=$(printf '%q' "$KUBECONFIG_HOST_FILE") kubectl get serviceaccounts -n ${K8S_ASSISTANTS_NAMESPACE}"
+
+  # printf '\nKubernetes-native review complete.\n'
 }
 
 json_get() {
