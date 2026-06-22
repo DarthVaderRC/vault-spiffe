@@ -25,7 +25,7 @@ when it is referenced by a committed relative path. To embed this recording:
      https://github.com/user-attachments/assets/<uuid>.
   3. Copy that URL and replace the placeholder line below with it (URL on its own
      line). GitHub then renders an inline player.
-The .mp4 is already H.264 / 1080p (GitHub's recommended codec) and ~3 MB, within
+The .mp4 is already H.264 / 1440p (GitHub's recommended codec) and ~6 MB, within
 the 10 MB free-plan upload limit.
 -->
 
