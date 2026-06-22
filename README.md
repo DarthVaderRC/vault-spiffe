@@ -154,11 +154,11 @@ Current boundary:
 
 Each demo script supports:
 
-- No argument to run the full scenario with pauses at each checkpoint
+- No argument to run the full scenario, pausing after every call
 - `status` to show the current checkpoint status
 - `reset` to clear the saved checkpoint state
 
-Each scenario script runs the checkpoints in order and pauses between them until you press `n`. Every checkpoint prints:
+Each scenario script runs the checkpoints in order and pauses after every call until you press `Enter`, so each request and response stays on screen. Every call prints:
 
 - The Vault CLI or local inspection command being run
 - The raw response or file content
@@ -170,7 +170,7 @@ Each scenario script runs the checkpoints in order and pauses between them until
 ./scripts/demo-k8s-mtls.sh
 ```
 
-![Kubernetes auth to mTLS workflow](./media/workflow-k8s-mtls.svg)
+![Zero-trust mTLS between Kubernetes microservices sequence](./media/sequence-k8s-mtls.svg)
 
 This flow runs through Kubernetes auth, dual PKI issuance, backend certificate inspection, and an in-cluster zero-trust mTLS call. It shows:
 
@@ -187,7 +187,7 @@ This flow runs through Kubernetes auth, dual PKI issuance, backend certificate i
 ./scripts/demo-k8s-jwt.sh
 ```
 
-![Kubernetes auth to downstream JWT validation workflow](./media/workflow-k8s-jwt.svg)
+![Cross-network JWT-SVID authentication sequence](./media/sequence-k8s-jwt.svg)
 
 This flow runs through Kubernetes auth, JWT minting, discovery and JWKS retrieval, and a protected call to the relationship insights API. It shows:
 
@@ -204,6 +204,8 @@ This flow runs through Kubernetes auth, JWT minting, discovery and JWKS retrieva
 ```bash
 ./scripts/demo-k8s-jit.sh
 ```
+
+![Just-in-time dynamic database credentials sequence](./media/sequence-k8s-jit.svg)
 
 This flow reuses the same Kubernetes-verified `relationship-assistant` identity
 and brokers a short-lived Postgres credential from Vault's database secrets
@@ -226,7 +228,7 @@ engine. It shows:
 
 Run this after `./scripts/bootstrap.sh spire`.
 
-![SPIRE JWT-SVID to dynamic Postgres access workflow](./media/workflow-spire-jwt-auth.svg)
+![SPIRE JWT-SVID to Vault auth and dynamic DB access sequence](./media/sequence-spire-jwt.svg)
 
 This flow shows:
 
@@ -248,7 +250,7 @@ This is the supported SPIRE-to-Vault auth path in the local demo because it matc
 
 Run this after `./scripts/bootstrap.sh spire`.
 
-![Vault as SPIRE upstream authority workflow](./media/workflow-spire-upstreamauthority.svg)
+![Vault as SPIRE upstream authority sequence](./media/sequence-spire-upstreamauthority.svg)
 
 This flow shows:
 
@@ -267,7 +269,7 @@ To test how the SPIFFE secrets engine behaves on a performance replica when `jwt
 ./scripts/perf-repl-spiffe-issuer.sh
 ```
 
-![Performance replica issuer experiment workflow](./media/workflow-perf-replica-issuer.svg)
+![SPIFFE issuer on a Vault performance replica sequence](./media/sequence-perf-replica-issuer.svg)
 
 This opt-in workflow:
 
