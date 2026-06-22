@@ -469,10 +469,15 @@ pause_for_continue() {
 # the very first call) and later steps use "on" (the first-call pause is the
 # inter-checkpoint boundary). Emits nothing when non-interactive or when
 # pausing is disabled, so status/reset/bootstrap runs are unaffected.
+#
+# Only stdin (fd 0) is checked, not stdout: this helper is called inside a
+# $(...) command substitution where stdout is always a pipe, so a `-t 1` test
+# would always fail. The pause is read by the container Python from stdin, so a
+# TTY on fd 0 is the condition that actually matters.
 demo_pause_env() {
   local idx="$1"
 
-  if [[ ! -t 0 || ! -t 1 || "${HASHIBANK_DEMO_NO_PAUSE:-0}" == "1" ]]; then
+  if [[ ! -t 0 || "${HASHIBANK_DEMO_NO_PAUSE:-0}" == "1" ]]; then
     return 0
   fi
 
