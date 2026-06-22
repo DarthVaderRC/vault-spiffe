@@ -67,7 +67,7 @@ Optional pre-brief for a technical audience: `./scripts/bootstrap.sh review` pag
 
 Press `Enter` to advance — the demo pauses after every call, not just between the four checkpoints below.
 
-| Step | Checkpoint | What appears on screen | What to say |
+| Step | Checkpoint | What appears on screen | Talk track|
 |------|-----------|------------------------|-------------|
 | 1 | `kubernetes-login` | The assistant's Kubernetes auth role, its service account, and the Vault login response with `client_token` and policies `identity-assistant-k8s-spiffe` + `identity-assistant-k8s-jit`. | "The workload proves who it is with its Kubernetes service account token — no static secret. Vault returns a short-lived token carrying exactly the policies this identity is allowed." |
 | 2 | `broker-db-creds` | The dynamic role definition (creation SQL, TTLs), then `vault read database/creds/assistant-insights-readonly` returning a fresh `username`, `password`, and `lease_id` with a 5-minute lease. | "Vault just created a brand-new Postgres user on demand, scoped to read-only relationship data, valid for five minutes. This credential did not exist a second ago and will not exist a few minutes from now." |

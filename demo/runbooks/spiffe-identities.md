@@ -61,7 +61,7 @@ Optional pre-brief for a technical audience: `./scripts/bootstrap.sh review` pag
 
 Press `Enter` to advance — the demo pauses after every call, not just between the four checkpoints below.
 
-| Step | Checkpoint | What appears on screen | What to say |
+| Step | Checkpoint | What appears on screen | Talk track |
 |------|-----------|------------------------|-------------|
 | 1 | `kubernetes-login` | The assistant's Kubernetes auth role, its service account, and the Vault login response with a `client_token`. | "The agent authenticates with its Kubernetes service account token — its platform-native identity. No static secret. Vault hands back a short-lived token." |
 | 2 | `mint-jwt` | The SPIFFE role template, then the minted JWT-SVID and its decoded claims: a `spiffe://hashibank.demo/ns/assistants/sa/relationship-assistant` subject plus `bank`, `application`, `line_of_business`, `environment`, and `customer_data_domain`. | "Vault mints a JWT-SVID for this exact workload. The subject is a portable SPIFFE ID, and we attach business context the downstream service can authorize on — not just 'who', but 'what kind of workload'." |
