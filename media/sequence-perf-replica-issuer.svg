@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 700" role="img" aria-label="SPIFFE issuer on a Vault performance replica">
+<defs><style type="text/css"><![CDATA[@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');]]></style><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#161616"/></marker><marker id="arrowblue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0043ce"/></marker><marker id="arrowred" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#da1e28"/></marker></defs>
+<rect x="0" y="0" width="880" height="700" fill="#ffffff"/>
+<rect x="0" y="0" width="6" height="700" fill="#0f62fe"/>
+<text x="48" y="56" font-family="IBM Plex Sans" font-size="26" font-weight="700" fill="#161616">SPIFFE issuer on a Vault performance replica</text>
+<text x="48" y="86" font-family="IBM Plex Sans" font-size="15" fill="#525252">Replicated SPIFFE mount without jwt_issuer_url -&gt; observe the minted iss claim</text>
+<line x1="48" y1="104" x2="128" y2="104" stroke="#0f62fe" stroke-width="3"/>
+<line x1="190" y1="196" x2="190" y2="644" stroke="#a8a8a8" stroke-width="1.5" stroke-dasharray="2 5"/>
+<rect x="96.0" y="132" width="188" height="64" rx="4" fill="#ffffff" stroke="#8a3ffc" stroke-width="1.6"/>
+<rect x="96.0" y="132" width="188" height="5" rx="2" fill="#8a3ffc"/>
+<text x="190" y="162" text-anchor="middle" font-family="IBM Plex Sans" font-size="14.5" font-weight="700" fill="#161616">Primary Vault</text>
+<text x="190" y="182" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#525252">hashibank-vault</text>
+<line x1="440" y1="196" x2="440" y2="644" stroke="#a8a8a8" stroke-width="1.5" stroke-dasharray="2 5"/>
+<rect x="346.0" y="132" width="188" height="64" rx="4" fill="#ffffff" stroke="#0f62fe" stroke-width="1.6"/>
+<rect x="346.0" y="132" width="188" height="5" rx="2" fill="#0f62fe"/>
+<text x="440" y="162" text-anchor="middle" font-family="IBM Plex Sans" font-size="13" font-weight="700" fill="#161616">Performance Replica</text>
+<text x="440" y="182" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#525252">hashibank-vault-perf</text>
+<line x1="690" y1="196" x2="690" y2="644" stroke="#a8a8a8" stroke-width="1.5" stroke-dasharray="2 5"/>
+<rect x="596.0" y="132" width="188" height="64" rx="4" fill="#ffffff" stroke="#007d79" stroke-width="1.6"/>
+<rect x="596.0" y="132" width="188" height="5" rx="2" fill="#007d79"/>
+<text x="690" y="162" text-anchor="middle" font-family="IBM Plex Sans" font-size="14.5" font-weight="700" fill="#161616">AppRole client</text>
+<text x="690" y="182" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" fill="#525252">issuer check</text>
+<rect x="435.5" y="288" width="9" height="58" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="435.5" y="392" width="9" height="58" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<rect x="435.5" y="496" width="9" height="58" rx="1.5" fill="#edf5ff" stroke="#a6c8ff" stroke-width="1"/>
+<path d="M194.5,242 h34 v18 h-34" fill="none" stroke="#0043ce" stroke-width="1.6" marker-end="url(#arrowblue)"/>
+<text x="238" y="249" text-anchor="start" font-family="IBM Plex Sans" font-size="12.5" font-style="italic" fill="#525252">enable performance primary</text>
+<g><circle cx="169.5" cy="242" r="9" fill="#0f62fe"/><text x="169.5" y="245.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">1</text></g>
+<line x1="194.5" y1="294" x2="435.5" y2="294" stroke="#161616" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="315.0" y="285" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#161616">secondary token + enable secondary</text>
+<text x="315.0" y="309" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">activation token</text>
+<g><circle cx="178.5" cy="294" r="9" fill="#0f62fe"/><text x="178.5" y="297.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">2</text></g>
+<line x1="194.5" y1="346" x2="435.5" y2="346" stroke="#525252" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="315.0" y="337" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="400" fill="#525252">replicate SPIFFE mount + AppRole</text>
+<text x="315.0" y="361" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">spiffe-default-issuer (no jwt_issuer_url)</text>
+<g><circle cx="178.5" cy="346" r="9" fill="#0f62fe"/><text x="178.5" y="349.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">3</text></g>
+<line x1="685.5" y1="398" x2="444.5" y2="398" stroke="#161616" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="565.0" y="389" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#161616">POST auth/approle/login</text>
+<text x="565.0" y="413" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">role_id + secret_id</text>
+<g><circle cx="701.5" cy="398" r="9" fill="#0f62fe"/><text x="701.5" y="401.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">4</text></g>
+<line x1="444.5" y1="450" x2="685.5" y2="450" stroke="#525252" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="565.0" y="441" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="400" fill="#525252">Vault client token</text>
+<text x="565.0" y="465" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">scoped issuer policy</text>
+<g><circle cx="428.5" cy="450" r="9" fill="#0f62fe"/><text x="428.5" y="453.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">5</text></g>
+<line x1="685.5" y1="502" x2="444.5" y2="502" stroke="#161616" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="565.0" y="493" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#161616">POST spiffe-default-issuer/role/.../mintjwt</text>
+<text x="565.0" y="517" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">audience=perf-replica-issuer-check</text>
+<g><circle cx="701.5" cy="502" r="9" fill="#0f62fe"/><text x="701.5" y="505.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">6</text></g>
+<line x1="444.5" y1="554" x2="685.5" y2="554" stroke="#525252" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="565.0" y="545" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="400" fill="#525252">JWT-SVID</text>
+<text x="565.0" y="569" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#525252">iss claim under inspection</text>
+<g><circle cx="428.5" cy="554" r="9" fill="#0f62fe"/><text x="428.5" y="557.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">7</text></g>
+<path d="M685.5,606 h-34 v18 h34" fill="none" stroke="#0043ce" stroke-width="1.6" marker-end="url(#arrowblue)"/>
+<text x="642" y="613" text-anchor="end" font-family="IBM Plex Sans" font-size="12.5" font-style="italic" fill="#525252">decode iss == replica API address</text>
+<g><circle cx="710.5" cy="606" r="9" fill="#0f62fe"/><text x="710.5" y="609.5" text-anchor="middle" font-family="IBM Plex Mono" font-size="10.5" font-weight="500" fill="#ffffff">8</text></g>
+<text x="48" y="678" font-family="IBM Plex Mono" font-size="11" fill="#525252">Performance replication - which cluster address shows up as the JWT issuer?</text>
+</svg>
