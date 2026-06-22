@@ -10,9 +10,10 @@ FRAUD_WEB_SCENARIO="spire-jwt"
 
 run_internal() {
   local command="$1"
+  local pause_env="${2:-}"
 
   spire_client_exec \
-    "export PYTHONPATH=/workspace/demo/python FRAUD_WEB_URL=http://localhost:${FRAUD_WEB_PORT}/; python /workspace/demo/scripts/internal/spire_jwt_demo.py '$command'"
+    "export PYTHONPATH=/workspace/demo/python FRAUD_WEB_URL=http://localhost:${FRAUD_WEB_PORT}/ ${pause_env}; python /workspace/demo/scripts/internal/spire_jwt_demo.py '$command'"
 }
 
 run_flow() {
@@ -27,10 +28,7 @@ run_flow() {
   rm -f "$RUNTIME_DIR/checkpoints/spire-jwt.json"
 
   for idx in "${!steps[@]}"; do
-    run_internal "${steps[$idx]}"
-    if (( idx + 1 < ${#steps[@]} )); then
-      pause_for_continue
-    fi
+    run_internal "${steps[$idx]}" "$(demo_pause_env "$idx")"
   done
 }
 

@@ -463,6 +463,26 @@ pause_for_continue() {
   printf '\n\n'
 }
 
+# Echoes the HASHIBANK_DEMO_PAUSE env assignment to forward into a demo's
+# container so the Python transcript layer pauses after every call. The demo
+# run flow passes the step index; index 0 uses "first" (skip the pause before
+# the very first call) and later steps use "on" (the first-call pause is the
+# inter-checkpoint boundary). Emits nothing when non-interactive or when
+# pausing is disabled, so status/reset/bootstrap runs are unaffected.
+demo_pause_env() {
+  local idx="$1"
+
+  if [[ ! -t 0 || ! -t 1 || "${HASHIBANK_DEMO_NO_PAUSE:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  if [[ "$idx" -eq 0 ]]; then
+    printf 'HASHIBANK_DEMO_PAUSE=first '
+  else
+    printf 'HASHIBANK_DEMO_PAUSE=on '
+  fi
+}
+
 show_command_output() {
   local title="$1"
   local command="$2"
